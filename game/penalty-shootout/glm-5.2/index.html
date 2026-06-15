@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>3D 点球大战 · Penalty Shootout</title>
+<style>
+  :root{
+    --accent:#ffe14d; --accent2:#39ff88; --danger:#ff5555;
+    --panel:rgba(8,14,22,.72); --panel2:rgba(10,18,28,.88);
+    --line:rgba(255,255,255,.12); --txt:#eaf2ff; --dim:#9fb0c8;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{width:100%; height:100%; overflow:hidden; background:#0a0f16;
+    font-family:"Segoe UI",system-ui,-apple-system,"Microsoft YaHei",sans-serif;
+    color:var(--txt); user-select:none; -webkit-user-select:none;}
+  #app{position:fixed; inset:0;}
+  canvas{display:block;}
+
+  /* ---------- Scoreboard ---------- */
+  #scoreboard{position:absolute; top:14px; left:14px; z-index:20;
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:12px 16px; backdrop-filter:blur(10px); min-width:260px;
+    box-shadow:0 10px 30px rgba(0,0,0,.45);}
+  .sb-title{font-size:11px; letter-spacing:3px; color:var(--dim); text-transform:uppercase; margin-bottom:8px;}
+  .sb-row{display:flex; align-items:center; justify-content:space-between; gap:14px;}
+  .sb-team{display:flex; align-items:center; gap:8px; font-size:14px;}
+  .sb-team .dot{width:12px; height:12px; border-radius:3px;}
+  .sb-score{font-size:30px; font-weight:800; letter-spacing:1px; font-variant-numeric:tabular-nums;
+    display:flex; align-items:center; gap:10px;}
+  .digit{display:inline-block; width:26px; text-align:center; transition:transform .25s, color .25s;}
+  .digit.flip{animation:flip .5s ease;}
+  @keyframes flip{0%{transform:rotateX(0)}50%{transform:rotateX(90deg)}100%{transform:rotateX(0)}}
+  .sb-sep{color:var(--dim);}
+  .sb-stats{display:flex; gap:18px; margin-top:10px; padding-top:10px; border-top:1px dashed var(--line); font-size:12px;}
+  .sb-stats span b{color:var(--accent);}
+  #roundLabel{color:var(--accent2); font-weight:700;}
+
+  /* ---------- Top center phase ---------- */
+  #phase{position:absolute; top:16px; left:50%; transform:translateX(-50%); z-index:20;
+    background:var(--panel); border:1px solid var(--line); border-radius:30px; padding:8px 18px;
+    backdrop-filter:blur(8px); font-size:13px; letter-spacing:1px;}
+  #phase b{color:var(--accent);}
+
+  /* ---------- Difficulty ---------- */
+  #diff{position:absolute; top:14px; right:14px; z-index:20; display:flex; gap:6px;
+    background:var(--panel); border:1px solid var(--line); border-radius:30px; padding:6px; backdrop-filter:blur(10px);}
+  #diff button{background:transparent; color:var(--dim); border:0; padding:6px 14px; border-radius:24px;
+    cursor:pointer; font-size:12px; letter-spacing:1px; transition:.2s;}
+  #diff button.on{background:var(--accent); color:#1a1206; font-weight:700;}
+  #diff button:hover:not(.on){color:var(--txt);}
+
+  /* ---------- Power meter ---------- */
+  #powerWrap{position:absolute; left:24px; bottom:26px; z-index:20; width:220px; opacity:0; transition:opacity .25s;}
+  #powerWrap.show{opacity:1;}
+  .pm-label{font-size:11px; letter-spacing:2px; color:var(--dim); margin-bottom:6px; text-transform:uppercase;}
+  #powerBar{height:14px; border-radius:8px; background:rgba(255,255,255,.08); overflow:hidden; border:1px solid var(--line);}
+  #powerFill{height:100%; width:0%; background:linear-gradient(90deg,#39ff88,#ffe14d 60%,#ff5555); transition:width .05s linear;}
+  .pm-hint{font-size:11px; color:var(--dim); margin-top:6px;}
+
+  /* ---------- Center banner ---------- */
+  #banner{position:absolute; top:42%; left:50%; transform:translate(-50%,-50%) scale(.7); z-index:30;
+    opacity:0; pointer-events:none; text-align:center; transition:.35s cubic-bezier(.2,1.4,.4,1);}
+  #banner.show{opacity:1; transform:translate(-50%,-50%) scale(1);}
+  #banner .big{font-size:74px; font-weight:900; letter-spacing:2px; text-shadow:0 6px 24px rgba(0,0,0,.6);}
+  #banner .sub{font-size:18px; color:var(--dim); margin-top:6px; letter-spacing:4px;}
+  .goal{color:var(--accent2);} .miss{color:var(--danger);} .save{color:#5fd0ff;}
+
+  /* ---------- Defend controls hint ---------- */
+  #defendHint{position:absolute; right:24px; bottom:26px; z-index:20; max-width:230px;
+    background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+    backdrop-filter:blur(10px); font-size:12px; line-height:1.6; color:var(--dim); display:none;}
+  #defendHint b{color:var(--accent);}
+  #defendHint.show{display:block;}
+  .key{display:inline-block; background:rgba(255,255,255,.1); border:1px solid var(--line);
+    border-radius:5px; padding:1px 7px; font-size:11px; color:var(--txt); margin:0 2px;}
+
+  /* ---------- Start / End overlay ---------- */
+  #overlay{position:absolute; inset:0; z-index:50; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(ellipse at center,rgba(10,18,30,.86),rgba(4,8,14,.96)); backdrop-filter:blur(4px);}
+  #overlay.hidden{display:none;}
+  .card{width:min(460px,90vw); background:var(--panel2); border:1px solid var(--line); border-radius:20px;
+    padding:34px 30px; text-align:center; box-shadow:0 30px 80px rgba(0,0,0,.6);}
+  .card h1{font-size:30px; letter-spacing:2px; margin-bottom:6px;}
+  .card h1 .g{color:var(--accent2);} .card h1 .y{color:var(--accent);}
+  .card p{color:var(--dim); font-size:13px; line-height:1.7; margin:14px 0 22px;}
+  .card .res{font-size:48px; font-weight:900; margin:10px 0;}
+  .card .res.win{color:var(--accent2);} .card .res.lose{color:var(--danger);} .card .res.draw{color:var(--accent);}
+  .btn{display:inline-block; background:linear-gradient(135deg,var(--accent),#ffb938); color:#1a1206;
+    font-weight:800; letter-spacing:2px; padding:13px 34px; border:0; border-radius:30px; cursor:pointer;
+    font-size:14px; transition:.2s; box-shadow:0 8px 24px rgba(255,225,77,.3);}
+  .btn:hover{transform:translateY(-2px); box-shadow:0 12px 30px rgba(255,225,77,.45);}
+  .howto{text-align:left; font-size:12px; color:var(--dim); line-height:1.9; margin:14px 0;
+    background:rgba(255,255,255,.04); border-radius:12px; padding:14px 16px;}
+  .howto b{color:var(--txt);}
+
+  /* loading */
+  #loading{position:absolute; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
+    flex-direction:column; background:#0a0f16; color:var(--dim); letter-spacing:3px;}
+  #loading.hidden{display:none;}
+  .spin{width:46px; height:46px; border:4px solid rgba(255,255,255,.12); border-top-color:var(--accent);
+    border-radius:50%; animation:rot 1s linear infinite; margin-bottom:18px;}
+  @keyframes rot{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<!-- Scoreboard -->
+<div id="scoreboard">
+  <div class="sb-title">点球大战 · Shootout</div>
+  <div class="sb-row">
+    <div class="sb-team"><span class="dot" style="background:#39c5ff"></span>玩家 YOU</div>
+    <div class="sb-score">
+      <span class="digit" id="scoreP">0</span>
+      <span class="sb-sep">:</span>
+      <span class="digit" id="scoreA">0</span>
+    </div>
+    <div class="sb-team">AI <span class="dot" style="background:#ff5555"></span></div>
+  </div>
+  <div class="sb-stats">
+    <span>轮次 <b id="roundLabel">1 / 5</b></span>
+    <span>玩家射 <b id="pStat">0/0</b></span>
+    <span>AI射 <b id="aStat">0/0</b></span>
+  </div>
+</div>
+
+<!-- Phase -->
+<div id="phase">第 <b id="phaseRound">1</b> 轮 · <b id="phaseText">准备开始</b></div>
+
+<!-- Difficulty -->
+<div id="diff">
+  <button data-d="0">简单</button>
+  <button data-d="1" class="on">普通</button>
+  <button data-d="2">困难</button>
+</div>
+
+<!-- Power meter -->
+<div id="powerWrap">
+  <div class="pm-label">力量 POWER</div>
+  <div id="powerBar"><div id="powerFill"></div></div>
+  <div class="pm-hint">拖拽鼠标瞄准 · 拖动越远力量越大 · 松开射门</div>
+</div>
+
+<!-- Defend hint -->
+<div id="defendHint">
+  <b>扑救阶段</b><br>
+  移动鼠标 — 控制守门员左右<br>
+  <span class="key">空格</span> / 点击 — 扑救跳跃<br>
+  对准来球方向扑救！
+</div>
+
+<!-- Banner -->
+<div id="banner"><div class="big" id="bannerBig">GOAL!</div><div class="sub" id="bannerSub">进球</div></div>
+
+<!-- Start / end overlay -->
+<div id="overlay">
+  <div class="card" id="startCard">
+    <h1><span class="g">3D</span> 点球 <span class="y">大战</span></h1>
+    <p>Three.js + Cannon.js 实时物理 · 马格努斯弧线 · 软体球网</p>
+    <div class="howto">
+      <div>射门阶段：<b>按住鼠标拖拽</b>瞄准方向与弧线，拖动距离决定<b>力量</b>，松开射门。</div>
+      <div>扑救阶段：<b>移动鼠标</b>控制守门员，<b>空格 / 点击</b>起跳扑救。</div>
+      <div>5 轮点球，进球多者胜，平局进入突然死亡法。</div>
+    </div>
+    <button class="btn" id="startBtn">开始比赛</button>
+  </div>
+</div>
+
+<!-- Loading -->
+<div id="loading"><div class="spin"></div><div>加载场景中…</div></div>
+
+<!-- CDN: Three.js (r128 UMD) + Cannon.js (0.6.2) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+<script>
+"use strict";
+/* ============================================================================
+   3D 点球大战 — Three.js + Cannon.js
+   - 物理：Cannon.js 球体 + 马格努斯力
+   - 场景：球场/球门/球网/看台观众剪影
+   - 玩法：拖拽射门、守门员 AI(3 难度)、扑救操控、5 轮制
+   ============================================================================ */
+
+// --- CapsuleGeometry 兼容垫片 (Three.js r128 没有，用 LatheGeometry 构造) ---
+if(typeof THREE!=='undefined' && !THREE.CapsuleGeometry){
+  THREE.CapsuleGeometry = function(r, len, capSegs, segs){
+    capSegs = Math.max(2, capSegs||4); segs = segs||10;
+    const half = len/2, pts=[];
+    for(let i=0;i<=capSegs;i++){ const a=-Math.PI/2 + (Math.PI/2)*(i/capSegs);
+      pts.push(new THREE.Vector2(Math.max(0.0001, r*Math.cos(a)), -half + r*Math.sin(a))); }
+    pts.push(new THREE.Vector2(r, half));
+    for(let i=1;i<=capSegs;i++){ const a=(Math.PI/2)*(i/capSegs);
+      pts.push(new THREE.Vector2(Math.max(0.0001, r*Math.cos(a)), half + r*Math.sin(a))); }
+    return new THREE.LatheGeometry(pts, segs);
+  };
+}
+
+// ----------------------------- 全局配置 --------------------------------------
+const CFG = {
+  goal: { w: 7.32, h: 2.44, depth: 1.8, z: 11 },     // 球门(米)
+  spot: { x: 0, y: 0.11, z: 2 },                      // 点球点
+  gravity: -9.82,
+  magnus: 0.0009,                                     // 马格努斯系数
+  ballRadius: 0.11,
+  speeds: [14, 22, 30],                               // min/mid/max 球速
+  diff: [
+    { name:'简单', react:0.30, speed:6.0,  err:0.9, dive:1.5, fail:0.18 },
+    { name:'普通', react:0.15, speed:8.5,  err:0.5, dive:1.7, fail:0.08 },
+    { name:'困难', react:0.02, speed:12.0, err:0.22,dive:2.0, fail:0.05 },
+  ],
+  totalRounds: 5,
+};
+
+// ----------------------------- DOM ------------------------------------------
+const $ = id => document.getElementById(id);
+const ui = {
+  scoreP:$('scoreP'), scoreA:$('scoreA'), roundLabel:$('roundLabel'),
+  pStat:$('pStat'), aStat:$('aStat'), phaseRound:$('phaseRound'), phaseText:$('phaseText'),
+  powerWrap:$('powerWrap'), powerFill:$('powerFill'),
+  banner:$('banner'), bannerBig:$('bannerBig'), bannerSub:$('bannerSub'),
+  defendHint:$('defendHint'), overlay:$('overlay'), startCard:$('startCard'),
+  loading:$('loading'),
+};
+
+// ----------------------------- Three / Cannon --------------------------------
+let scene, camera, renderer, world;
+let ballMesh, ballBody, ballMat;
+let goalGroup, netBack, netBackBase;
+let keeper, keeperParts = {};
+let aiKeeper;                       // 射门时守门的 AI keeper 引用 (同 keeper)
+let crowdPoints, cheerPoints;
+let aimLine;
+const clock = new THREE.Clock();
+const tmpV = new THREE.Vector3();
+const tmpV2 = new THREE.Vector3();
+
+// 输入
+const input = {
+  aiming:false, sx:0, sy:0, cx:0, cy:0,                  // 鼠标 NDC
+  defending:false, mx:0,                                  // 守门员横向(-1..1)
+  diveQueued:false,
+};
+let difficulty = 1;
+
+// 游戏状态机
+let state = 'menu';   // menu | playerAim | ballFly | defend | aiFly | roundDone | gameOver
+let round = 0;
+let scoreP = 0, scoreA = 0;
+let pShots = 0, pMade = 0, aShots = 0, aMade = 0;
+let suddenDeath = false;
+
+// 飞行中的射门数据
+let fly = null;       // {magnus, spin, power, by:'p'|'a', resolved:false, t:0}
+let keeperCtrl = { x:0, y:1.1, diving:0, diveDir:0, vx:0 }; // 当前守门员(防守方)
+let aiReact = null;   // {t, targetX, decided}
+let cameraShake = 0;
+
+// =============================================================================
+//  初始化
+// =============================================================================
+function init(){
+  initThree();
+  initPhysics();
+  buildLights();
+  buildPitch();
+  buildStadium();
+  buildCrowd();
+  buildGoal();
+  buildBall();
+  buildKeeper();
+  buildAimLine();
+  buildCheerParticles();
+  bindInput();
+  resetBallToSpot();
+  ui.loading.classList.add('hidden');
+  animate();
+}
+
+function initThree(){
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x9fc4e8);
+  scene.fog = new THREE.Fog(0x9fc4e8, 38, 90);
+
+  camera = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.1, 300);
+  setCameraView('shoot');
+
+  renderer = new THREE.WebGLRenderer({ antialias:true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.outputEncoding = THREE.sRGBEncoding;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
+  $('app').appendChild(renderer.domElement);
+  addEventListener('resize', onResize);
+}
+
+function setCameraView(mode){
+  // shoot: 玩家射门视角（点球点后方）
+  // defend: 玩家扑救视角（球门后方稍高）
+  // follow: 跟球
+  const v = cameraTarget;
+  if(mode==='shoot'){      v.set(0,3.4,-5.5); camera.lookAt(0,1.2,8); }
+  else if(mode==='defend'){ v.set(0,3.2,14.5); camera.lookAt(0,1.4,2); }
+  camera.position.copy(v);
+}
+const cameraTarget = new THREE.Vector3(0,3.4,-5.5);
+
+function onResize(){
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+}
+
+function initPhysics(){
+  world = new CANNON.World();
+  world.gravity.set(0, CFG.gravity, 0);
+  world.broadphase = new CANNON.NaiveBroadphase();
+  world.solver.iterations = 8;
+  // 地面
+  const ground = new CANNON.Body({ mass:0, shape:new CANNON.Plane() });
+  ground.quaternion.setFromAxisAngle(new CANNON.Vec3(1,0,0), -Math.PI/2);
+  world.addBody(ground);
+}
+
+function buildLights(){
+  scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x35521e, 0.85));
+  const sun = new THREE.DirectionalLight(0xfff2d8, 1.15);
+  sun.position.set(8, 18, 6);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048,2048);
+  const c = sun.shadow.camera; c.left=-18; c.right=18; c.top=14; c.bottom=-6; c.near=1; c.far=60;
+  sun.shadow.bias = -0.0004;
+  scene.add(sun);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.18));
+}
+
+// ----------------------------- 球场 -------------------------------------------
+function buildPitch(){
+  // 草地条纹纹理（canvas）
+  const tex = makePitchTexture();
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(6, 10);
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(80, 110),
+    new THREE.MeshStandardMaterial({ map:tex, roughness:0.95 })
+  );
+  ground.rotation.x = -Math.PI/2; ground.position.z = 5;
+  ground.receiveShadow = true; scene.add(ground);
+
+  // 点球点
+  const spot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.18, 24),
+    new THREE.MeshBasicMaterial({ color:0xffffff })
+  );
+  spot.rotation.x = -Math.PI/2; spot.position.set(CFG.spot.x, 0.012, CFG.spot.z);
+  scene.add(spot);
+
+  // 禁区线 / 球门区线 / 球门线（白色细条贴地）
+  const lineMat = new THREE.MeshBasicMaterial({ color:0xffffff, transparent:true, opacity:0.9 });
+  const addLine = (x,z,w,d)=>{ const m=new THREE.Mesh(new THREE.PlaneGeometry(w,d), lineMat);
+    m.rotation.x=-Math.PI/2; m.position.set(x,0.013,z); scene.add(m); };
+  addLine(0, CFG.goal.z, 20.16, 0.12);                 // 球门线
+  addLine(0, CFG.goal.z-16.5, 40.32, 0.12);            // 罚球区前线
+  addLine(-20.16, CFG.goal.z-8.25, 0.12, 16.5);
+  addLine( 20.16, CFG.goal.z-8.25, 0.12, 16.5);
+  addLine(0, CFG.goal.z-5.5, 18.32, 0.12);             // 球门区
+  addLine(-9.16, CFG.goal.z-2.75, 0.12, 2.75);
+  addLine( 9.16, CFG.goal.z-2.75, 0.12, 2.75);
+  // 罚球弧
+  const arc = new THREE.Mesh(
+    new THREE.RingGeometry(9.15, 9.27, 48, 1, Math.PI*0.62, Math.PI*0.76),
+    lineMat
+  );
+  arc.rotation.x = -Math.PI/2; arc.position.set(0,0.013, CFG.goal.z-16.5); scene.add(arc);
+}
+
+function makePitchTexture(){
+  const c = document.createElement('canvas'); c.width=256; c.height=256;
+  const g = c.getContext('2d');
+  for(let i=0;i<8;i++){ g.fillStyle = i%2? '#2f7d32':'#348a39'; g.fillRect(0,i*32,256,32); }
+  // 噪点
+  for(let i=0;i<3000;i++){ g.fillStyle = `rgba(255,255,255,${Math.random()*0.04})`;
+    g.fillRect(Math.random()*256, Math.random()*256, 2, 2); }
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 8; return t;
+}
+
+// ----------------------------- 看台 + 观众剪影 --------------------------------
+function buildStadium(){
+  // 看台基座（三面围绕球门后方与两侧）
+  const standMat = new THREE.MeshStandardMaterial({ color:0x2a2f38, roughness:1 });
+  const makeStand = (w,h,d,x,y,z,rx)=>{ const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d), standMat);
+    m.position.set(x,y,z); m.rotation.x=rx||0; m.receiveShadow=true; m.castShadow=true; scene.add(m); };
+  // 后看台（球门后方）
+  makeStand(60, 10, 14, 0, 5, CFG.goal.z+18, -0.32);
+  // 左右看台
+  makeStand(14, 8, 60, -32, 4, 5, 0.22);
+  makeStand(14, 8, 60,  32, 4, 5, -0.22);
+  // 跑道 / 沟边
+  const track = new THREE.Mesh(new THREE.RingGeometry(0,1,1), new THREE.MeshStandardMaterial({color:0x6b6b6b}));
+}
+
+function buildCrowd(){
+  // 用 InstancedMesh 生成大量观众剪影
+  const geo = new THREE.CapsuleGeometry ? new THREE.CapsuleGeometry(0.28,0.5,3,6)
+                                        : new THREE.CylinderGeometry(0.28,0.28,0.7,6);
+  const mat = new THREE.MeshBasicMaterial({ color:0x10151f });
+  const COUNT = 2600;
+  const mesh = new THREE.InstancedMesh(geo, mat, COUNT);
+  const dummy = new THREE.Object3D();
+  const cols = [0x10151f, 0x141a26, 0x0c0f16, 0x1a2130];
+  let i=0;
+  // 后看台
+  for(let row=0; row<22; row++){
+    for(let col=0; col<60; col++){
+      if(i>=COUNT) break;
+      const x = -28 + col*0.95 + (Math.random()-.5)*0.25;
+      const z = CFG.goal.z + 12 + row*0.55;
+      const y = 1.2 + row*0.42 + Math.sin(row*0.6)*0.15;
+      dummy.position.set(x, y, z);
+      dummy.scale.setScalar(0.8+Math.random()*0.5);
+      dummy.rotation.y = Math.random()*0.4-0.2;
+      dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
+      i++;
+    }
+  }
+  // 两侧看台
+  for(let side=-1; side<=1; side+=2){
+    for(let row=0; row<16; row++){
+      for(let col=0; col<50; col++){
+        if(i>=COUNT) break;
+        const x = side*(26 + row*0.5);
+        const z = -10 + col*1.0;
+        const y = 1.2 + row*0.42;
+        dummy.position.set(x + (Math.random()-.5)*0.2, y, z);
+        dummy.scale.setScalar(0.8+Math.random()*0.45);
+        dummy.updateMatrix(); mesh.setMatrixAt(i, dummy.matrix);
+        i++;
+      }
+    }
+  }
+  mesh.count = i; mesh.instanceMatrix.needsUpdate = true;
+  scene.add(mesh);
+  crowdPoints = mesh;
+}
+
+// ----------------------------- 球门 + 球网 ------------------------------------
+function buildGoal(){
+  goalGroup = new THREE.Group();
+  const gz = CFG.goal.z, gw = CFG.goal.w, gh = CFG.goal.h, gd = CFG.goal.depth;
+  const postMat = new THREE.MeshStandardMaterial({ color:0xffffff, roughness:0.4 });
+  const postR = 0.06;
+  const cyl = (x,y,z,len,ax)=>{ const m=new THREE.Mesh(new THREE.CylinderGeometry(postR,postR,len,16), postMat);
+    m.position.set(x,y,z); m.castShadow=true;
+    if(ax==='x') m.rotation.z = Math.PI/2;
+    if(ax==='z') m.rotation.x = Math.PI/2;
+    goalGroup.add(m); return m; };
+  // 立柱
+  cyl(-gw/2, gh/2, gz, gh);
+  cyl( gw/2, gh/2, gz, gh);
+  // 横梁
+  cyl(-gw/2, gh, gz, gw,'x'); cyl(gw/2,gh,gz, gw,'x'); // 用一根覆盖：再补中间
+  const bar = new THREE.Mesh(new THREE.CylinderGeometry(postR,postR,gw,16), postMat);
+  bar.rotation.z = Math.PI/2; bar.position.set(0,gh,gz); bar.castShadow=true; goalGroup.add(bar);
+  // 后横向支撑
+  cyl(-gw/2, gh/2, gz+gd, gh); cyl(gw/2, gh/2, gz+gd, gh);
+  const bar2 = bar.clone(); bar2.position.z = gz+gd; goalGroup.add(bar2);
+  // 顶部 / 侧面 连接
+  cyl(-gw/2, gh, gz+gd/2, gd,'z'); cyl(gw/2, gh, gz+gd/2, gd,'z');
+  cyl(-gw/2, 0, gz+gd/2, gd,'z'); cyl(gw/2, 0, gz+gd/2, gd,'z');
+
+  // 球网：背网 + 顶网 + 侧网（用 canvas 网格纹理的半透明面）
+  const netTex = makeNetTexture();
+  const netMat = new THREE.MeshStandardMaterial({ map:netTex, transparent:true,
+    alphaTest:0.35, side:THREE.DoubleSide, roughness:1 });
+  // 背网（可变形）
+  netBack = new THREE.Mesh(new THREE.PlaneGeometry(gw, gh, 26, 12), netMat.clone());
+  netBack.position.set(0, gh/2, gz+gd);
+  netBack.receiveShadow = false;
+  goalGroup.add(netBack);
+  netBackBase = netBack.geometry.attributes.position.array.slice();
+  // 顶网
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(gw, gd, 16, 6), netMat.clone());
+  top.rotation.x = Math.PI/2; top.position.set(0, gh, gz+gd/2);
+  goalGroup.add(top);
+  // 侧网
+  const sideL = new THREE.Mesh(new THREE.PlaneGeometry(gd, gh, 6, 10), netMat.clone());
+  sideL.rotation.y = Math.PI/2; sideL.position.set(-gw/2, gh/2, gz+gd/2); goalGroup.add(sideL);
+  const sideR = sideL.clone(); sideR.position.x = gw/2; goalGroup.add(sideR);
+
+  scene.add(goalGroup);
+}
+
+function makeNetTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=128;
+  const g=c.getContext('2d'); g.clearRect(0,0,128,128);
+  g.strokeStyle='rgba(255,255,255,0.85)'; g.lineWidth=2;
+  for(let i=0;i<=128;i+=10){ g.beginPath(); g.moveTo(i,0); g.lineTo(128,128-i); g.stroke();
+    g.beginPath(); g.moveTo(0,i); g.lineTo(128-i,128); g.stroke();
+    g.beginPath(); g.moveTo(i,0); g.lineTo(0,128-i); g.stroke();
+    g.beginPath(); g.moveTo(128,i); g.lineTo(i,128); g.stroke(); }
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; t.repeat.set(6,3); return t;
+}
+
+// 球网顶点波动状态
+const netRipple = { active:false, t:0, px:0, py:0, amp:0 };
+function triggerNetRipple(hitX, hitY, power){
+  netRipple.active = true; netRipple.t = 0;
+  netRipple.px = hitX; netRipple.py = hitY; netRipple.amp = 0.25 + power*0.35;
+}
+function updateNet(dt){
+  if(!netBack) return;
+  const pos = netBack.geometry.attributes.position;
+  const base = netBackBase;
+  if(!netRipple.active){
+    // 回弹到原位
+    let dirty=false;
+    for(let i=0;i<pos.count;i++){
+      const idx=i*3;
+      const dx = pos.array[idx+2] - base[idx+2];
+      if(Math.abs(dx)>0.001){ pos.array[idx+2] = base[idx+2] - dx*0.86; dirty=true; }
+    }
+    if(dirty) pos.needsUpdate=true;
+    return;
+  }
+  netRipple.t += dt;
+  const T = netRipple.t;
+  const amp = netRipple.amp;
+  // 把背网沿 -z 推动，离击中点越近越深，并随时间衰减+传播
+  for(let i=0;i<pos.count;i++){
+    const idx=i*3;
+    const x = base[idx], y = base[idx+1];
+    const d = Math.hypot(x-netRipple.px, y-netRipple.py);
+    const wave = Math.max(0, 1 - d/2.4);
+    const env  = Math.exp(-T*2.4) * (1 + 0.6*Math.sin(T*22 - d*3));
+    const push = amp * wave * env;
+    pos.array[idx]   = base[idx];
+    pos.array[idx+1] = base[idx+1];
+    pos.array[idx+2] = base[idx+2] - Math.max(0, push);
+  }
+  pos.needsUpdate = true;
+  if(T>1.4){ netRipple.active=false; }
+}
+
+// ----------------------------- 足球 ------------------------------------------
+function buildBall(){
+  const tex = makeBallTexture();
+  ballMat = new THREE.MeshStandardMaterial({ map:tex, roughness:0.45, metalness:0.0 });
+  ballMesh = new THREE.Mesh(new THREE.SphereGeometry(CFG.ballRadius, 32, 32), ballMat);
+  ballMesh.castShadow = true; scene.add(ballMesh);
+
+  // 影子圆点（额外深色，避免远距阴影丢失）—— 可选
+  const body = new CANNON.Body({
+    mass: 0.43,
+    shape: new CANNON.Sphere(CFG.ballRadius),
+    position: new CANNON.Vec3(CFG.spot.x, CFG.spot.y, CFG.spot.z),
+    material: new CANNON.Material({ friction:0.4, restitution:0.55 }),
+    linearDamping: 0.16, angularDamping: 0.18,
+  });
+  world.addBody(body);
+  ballBody = body;
+}
+
+function makeBallTexture(){
+  const c=document.createElement('canvas'); c.width=1024; c.height=512;
+  const g=c.getContext('2d');
+  g.fillStyle='#f6f6f2'; g.fillRect(0,0,1024,512);
+  // 黑色五边形（简化排列，球面 UV 映射后呈"足球感"）
+  g.fillStyle='#15171c';
+  const pent=(cx,cy,r,rot=0)=>{ g.beginPath();
+    for(let i=0;i<5;i++){ const a=rot+i/5*Math.PI*2 - Math.PI/2;
+      const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
+      i?g.lineTo(x,y):g.moveTo(x,y); } g.closePath(); g.fill(); };
+  // 主五边形网格
+  const cols=8, rows=4;
+  for(let r=0;r<rows;r++){
+    for(let cI=0;cI<cols;cI++){
+      const x = (cI+ (r%2?0.5:0))/cols*1024;
+      const y = (r+0.5)/rows*512;
+      pent(x,y, 46, r*0.2);
+    }
+  }
+  // 勾边细线
+  g.strokeStyle='rgba(0,0,0,0.18)'; g.lineWidth=2;
+  for(let i=0;i<=8;i++){ g.beginPath(); g.moveTo(i/8*1024,0); g.lineTo(i/8*1024,512); g.stroke(); }
+  const t=new THREE.CanvasTexture(c); t.anisotropy=8; return t;
+}
+
+function resetBallToSpot(){
+  ballBody.position.set(CFG.spot.x, CFG.spot.y, CFG.spot.z);
+  ballBody.velocity.setZero(); ballBody.angularVelocity.setZero();
+  ballBody.force.setZero(); ballBody.torque.setZero();
+  ballMesh.position.copy(ballBody.position);
+  ballMesh.rotation.set(0,0,0);
+}
+
+// ----------------------------- 守门员（人形） ---------------------------------
+function buildKeeper(){
+  keeper = new THREE.Group();
+  const skin = new THREE.MeshStandardMaterial({ color:0xffd9b3, roughness:0.7 });
+  const kit  = new THREE.MeshStandardMaterial({ color:0xffe14d, roughness:0.6 });
+  const dark = new THREE.MeshStandardMaterial({ color:0x1b1f27, roughness:0.7 });
+
+  const add=(geo,mat,x,y,z,name)=>{ const m=new THREE.Mesh(geo,mat); m.position.set(x,y,z);
+    m.castShadow=true; keeper.add(m); if(name) keeperParts[name]=m; return m; };
+
+  // 躯干
+  add(new THREE.CapsuleGeometry(0.22,0.5,4,10), kit, 0,1.35,0,'torso');
+  // 头
+  add(new THREE.SphereGeometry(0.17,20,20), skin, 0,1.86,0,'head');
+  // 手臂(上臂+前臂 用组)
+  const mkArm=(sx)=>{ const g=new THREE.Group(); g.position.set(sx*0.27,1.55,0);
+    const up=new THREE.Mesh(new THREE.CapsuleGeometry(0.085,0.32,4,8), kit); up.position.set(0,-0.18,0); up.castShadow=true; g.add(up);
+    const fo=new THREE.Mesh(new THREE.CapsuleGeometry(0.075,0.30,4,8), skin); fo.position.set(0,-0.55,0); fo.castShadow=true; g.add(fo);
+    const hnd=new THREE.Mesh(new THREE.SphereGeometry(0.085,10,10), skin); hnd.position.set(0,-0.74,0); g.add(hnd);
+    keeper.add(g); return g; };
+  keeperParts.armL = mkArm(-1);
+  keeperParts.armR = mkArm(1);
+  // 腿
+  const mkLeg=(sx)=>{ const g=new THREE.Group(); g.position.set(sx*0.13,1.05,0);
+    const th=new THREE.Mesh(new THREE.CapsuleGeometry(0.11,0.4,4,8), dark); th.position.set(0,-0.25,0); th.castShadow=true; g.add(th);
+    const sh=new THREE.Mesh(new THREE.CapsuleGeometry(0.095,0.4,4,8), dark); sh.position.set(0,-0.7,0); sh.castShadow=true; g.add(sh);
+    const ft=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.1,0.32), dark); ft.position.set(0,-0.95,0.08); g.add(ft);
+    keeper.add(g); return g; };
+  keeperParts.legL = mkLeg(-1);
+  keeperParts.legR = mkLeg(1);
+
+  keeper.position.set(0, 0, CFG.goal.z + 0.5);
+  scene.add(keeper);
+}
+
+// 把守门员姿态重置 / 扑救动画
+function poseKeeperIdle(){
+  keeperParts.armL.rotation.set(0,0,0.25); keeperParts.armR.rotation.set(0,0,-0.25);
+  keeperParts.legL.rotation.set(0,0,0); keeperParts.legR.rotation.set(0,0,0);
+  keeper.rotation.set(0,0,0); keeper.scale.set(1,1,1);
+}
+function poseKeeperDive(dir){
+  // dir: -1 左, 1 右, 0 原地起跳
+  keeper.rotation.z = dir* -1.1;
+  keeper.rotation.y = dir* 0.3;
+  keeperParts.armL.rotation.z = dir>0 ? -1.4 : 0.6;
+  keeperParts.armR.rotation.z = dir>0 ? -0.6 : 1.4;
+}
+
+// ----------------------------- 瞄准辅助线 ------------------------------------
+function buildAimLine(){
+  // 用 0~N-1，避免末尾 (0,0,0) 干扰 computeLineDistances；几何初始全置为点球点
+  const N=60, g = new THREE.BufferGeometry();
+  const arr=new Float32Array(N*3);
+  for(let i=0;i<N;i++){ arr[i*3]=CFG.spot.x; arr[i*3+1]=CFG.spot.y; arr[i*3+2]=CFG.spot.z; }
+  g.setAttribute('position', new THREE.BufferAttribute(arr,3));
+  const m = new THREE.LineDashedMaterial({ color:0xffe14d, dashSize:0.32, gapSize:0.20,
+    transparent:true, opacity:0.95, linewidth:2 });
+  aimLine = new THREE.Line(g, m); aimLine.visible=false; aimLine.frustumCulled=false; scene.add(aimLine);
+}
+function updateAimLine(vx,vy,vz, spinX,spinY){
+  // 与 applyBallForces() 完全一致的马格努斯/重力积分(质量 m=0.43)
+  const N = 60, dt = 1/60;
+  const arr = aimLine.geometry.attributes.position.array;
+  let x=CFG.spot.x, y=CFG.spot.y, z=CFG.spot.z;
+  let vxL=vx, vyL=vy, vzL=vz;
+  const m=0.43, k=CFG.magnus, g=CFG.gravity;
+  const wx=spinX, wy=spinY, wz=0;
+  let used=0;
+  for(let i=0;i<N;i++){
+    arr[i*3]=x; arr[i*3+1]=y; arr[i*3+2]=z; used++;
+    // a = (k/m) * (w x v) + g·j
+    const ax = (k/m)*(wy*vzL - wz*vyL);
+    const ay = (k/m)*(wz*vxL - wx*vzL) + g;
+    const az = (k/m)*(wx*vyL - wy*vxL);
+    vxL+=ax*dt; vyL+=ay*dt; vzL+=az*dt;
+    x+=vxL*dt; y+=vyL*dt; z+=vzL*dt;
+    if(y<0.05) break;
+    if(z > CFG.goal.z+0.5) break;
+  }
+  // 把没用到的点收缩到末点，避免虚线乱跳
+  for(let i=used;i<N;i++){ arr[i*3]=x; arr[i*3+1]=Math.max(0.05,y); arr[i*3+2]=z; }
+  aimLine.geometry.attributes.position.needsUpdate=true;
+  aimLine.computeLineDistances();
+}
+
+// ----------------------------- 观众欢呼粒子 ----------------------------------
+function buildCheerParticles(){
+  const N=600;
+  const geo = new THREE.BufferGeometry();
+  const pos=new Float32Array(N*3); const col=new Float32Array(N*3);
+  const palette=[ [1,0.9,0.3],[0.3,1,0.6],[0.4,0.7,1],[1,0.4,0.5] ];
+  for(let i=0;i<N;i++){ pos[i*3]=0; pos[i*3+1]=-50; pos[i*3+2]=0;
+    const p=palette[i%palette.length]; col[i*3]=p[0]; col[i*3+1]=p[1]; col[i*3+2]=p[2]; }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col,3));
+  const mat=new THREE.PointsMaterial({ size:0.32, vertexColors:true, transparent:true, opacity:0.95,
+    depthWrite:false, blending:THREE.AdditiveBlending });
+  cheerPoints = new THREE.Points(geo, mat); cheerPoints.frustumCulled=false;
+  scene.add(cheerPoints);
+}
+const cheer = { active:false, t:0, N:0 };
+function spawnCheer(){
+  const pos = cheerPoints.geometry.attributes.position.array;
+  for(let i=0;i<cheerPoints.geometry.attributes.position.count;i++){
+    pos[i*3]   = (Math.random()-0.5)*40;
+    pos[i*3+1] = 1 + Math.random()*2;
+    pos[i*3+2] = CFG.goal.z + 11 + Math.random()*6;
+  }
+  cheer.active=true; cheer.t=0; cheer.N=cheerPoints.geometry.attributes.position.count;
+  cheerPoints.geometry.attributes.position.needsUpdate=true;
+  cheerPoints.material.opacity=1;
+}
+function updateCheer(dt){
+  if(!cheer.active) return;
+  cheer.t += dt;
+  const pos = cheerPoints.geometry.attributes.position.array;
+  for(let i=0;i<cheer.N;i++){
+    pos[i*3+1] += dt*(2.5+Math.sin(cheer.t*5+i)*0.6);
+    pos[i*3]   += dt*Math.sin(cheer.t*3+i)*0.4;
+  }
+  cheerPoints.geometry.attributes.position.needsUpdate=true;
+  cheerPoints.material.opacity = Math.max(0, 1 - cheer.t/2.2);
+  if(cheer.t>2.4){ cheer.active=false;
+    for(let i=0;i<cheer.N;i++) pos[i*3+1]=-50;
+    cheerPoints.geometry.attributes.position.needsUpdate=true; }
+}
+
+// ----------------------------- 输入 ------------------------------------------
+function bindInput(){
+  // 难度
+  document.querySelectorAll('#diff button').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('#diff button').forEach(x=>x.classList.remove('on'));
+    b.classList.add('on'); difficulty = +b.dataset.d;
+  }));
+  // 开始
+  $('startBtn').addEventListener('click', startGame);
+
+  const cv = renderer.domElement;
+  cv.addEventListener('pointerdown', onPointerDown);
+  cv.addEventListener('pointermove', onPointerMove);
+  addEventListener('pointerup', onPointerUp);
+  addEventListener('keydown', e=>{
+    if(e.code==='Space'){ e.preventDefault(); if(state==='defend') input.diveQueued=true; }
+  });
+}
+function ndc(e){ const r=renderer.domElement.getBoundingClientRect();
+  return { x:((e.clientX-r.left)/r.width)*2-1, y:-((e.clientY-r.top)/r.height)*2+1 }; }
+
+function onPointerDown(e){
+  if(state==='playerAim'){
+    input.aiming=true; const p=ndc(e); input.sx=input.cx=p.x; input.sy=input.cy=p.y;
+    ui.powerWrap.classList.add('show'); aimLine.visible=true;
+  } else if(state==='defend'){
+    input.diveQueued=true;
+  }
+}
+function onPointerMove(e){
+  const p=ndc(e); input.cx=p.x; input.cy=p.y;
+  if(state==='defend'){ input.mx = p.x; }
+}
+function onPointerUp(e){
+  if(state==='playerAim' && input.aiming){ input.aiming=false; launchPlayerShot(); }
+}
+
+// ----------------------------- 游戏流程 --------------------------------------
+function startGame(){
+  ui.overlay.classList.add('hidden');
+  scoreP=scoreA=0; pShots=pMade=aShots=aMade=0; round=0; suddenDeath=false;
+  updateScoreUI(true);
+  nextTurn();
+}
+
+function nextTurn(){
+  // 一轮 = 玩家先射 + AI 再射。每个 turn 是一脚。
+  round++;
+  const half = (round % 2 === 1); // 奇数 turn: 玩家射；偶数: AI 射
+  const isPlayerKick = half;
+  setupTurn(isPlayerKick);
+}
+
+function setupTurn(playerKicks){
+  resetBallToSpot(); poseKeeperIdle();
+  keeper.position.set(0,0, CFG.goal.z+0.5); keeperCtrl={x:0,y:1.1,diving:0,diveDir:0,vx:0};
+  netRipple.active=false; aiReact=null;
+  if(playerKicks){
+    state='playerAim'; setCameraView('shoot');
+    ui.phaseText.innerHTML='玩家射门'; ui.phaseRound.textContent=Math.ceil(round/2);
+    ui.roundLabel.textContent = `${Math.min(Math.ceil(round/2),CFG.totalRounds)} / ${CFG.totalRounds}` + (suddenDeath?' · 突然死亡':'');
+    ui.defendHint.classList.remove('show');
+    ui.powerWrap.classList.add('show'); aimLine.visible=true;
+    input.sx=input.cx=0; input.sy=input.cy=0;
+    // AI 守门：站在中线、随机微动
+  } else {
+    state='defend'; setCameraView('defend');
+    ui.phaseText.innerHTML='AI 射门 · 你来扑救'; ui.phaseRound.textContent=Math.ceil(round/2);
+    ui.defendHint.classList.add('show'); ui.powerWrap.classList.remove('show'); aimLine.visible=false;
+    // 0.7s 后 AI 起脚
+    setTimeout(aiKick, 900);
+  }
+}
+
+// ----------------------------- 玩家射门 --------------------------------------
+function readAim(){
+  const dx = input.cx - input.sx;
+  const dy = input.cy - input.sy;
+  const dist = Math.hypot(dx,dy);
+  const power = Math.min(1, dist/0.6);
+  // 方向 → 目标点(球门平面)
+  const aimX = THREE.MathUtils.clamp(dx*7.0, -CFG.goal.w/2+0.2, CFG.goal.w/2-0.2);
+  const targetY = THREE.MathUtils.clamp(0.4 + dy*3.0, 0.25, CFG.goal.h-0.2);
+  // 速度
+  const speed = THREE.MathUtils.lerp(CFG.speeds[0], CFG.speeds[2], power);
+  // 计算到目标方向(初速度方向)
+  const s = new THREE.Vector3(CFG.spot.x,CFG.spot.y,CFG.spot.z);
+  const t = new THREE.Vector3(aimX, targetY, CFG.goal.z);
+  const dir = t.clone().sub(s).normalize();
+  const vel = dir.multiplyScalar(speed);
+  // 旋转：横向拖拽 → 香蕉球(绕Y), 纵向 → 上旋/下旋(绕X)
+  const spinY = -dx * 26 * (0.5+power);
+  const spinX = dy * 18 * (0.4+power);   // 上拉 → 下旋(dip 反向)
+  return { vel, spinX, spinY, power, aimX, targetY };
+}
+
+function launchPlayerShot(){
+  ui.powerWrap.classList.remove('show'); aimLine.visible=false;
+  const a = readAim();
+  ballBody.velocity.set(a.vel.x, a.vel.y, a.vel.z);
+  ballBody.angularVelocity.set(a.spinX, a.spinY, 0);
+  state='ballFly';
+  fly = { by:'p', power:a.power, aimX:a.aimX, t:0, resolved:false };
+  // 镜头震动（力量大）
+  cameraShake = a.power*0.18;
+  // AI 守门员反应
+  scheduleAIDefense(a);
+  audio.kick(a.power);
+}
+
+function scheduleAIDefense(a){
+  const d = CFG.diff[difficulty];
+  // 预测落点（无马格努斯粗估，AI 带误差）
+  const predictX = a.aimX + (Math.random()-0.5)*d.err*2.0;
+  const predictY = a.targetY;
+  aiReact = { t:0, react:d.react, targetX:predictX, targetY:predictY,
+              speed:d.speed, decided:false, fail:Math.random()<d.fail };
+  keeperCtrl.x = 0; keeperCtrl.vx = 0;
+}
+
+// ----------------------------- AI 射门（玩家扑救） ---------------------------
+function aiKick(){
+  // AI 选目标(随机，偏向角落)
+  const corner = Math.random()<0.6;
+  const aimX = (Math.random()<0.5?-1:1) * (corner ? (2.4+Math.random()*0.9) : (Math.random()*2.0));
+  const targetY = corner ? (1.2+Math.random()*0.9) : (0.4+Math.random()*0.7);
+  const power = 0.55 + Math.random()*0.45;
+  const speed = THREE.MathUtils.lerp(CFG.speeds[0], CFG.speeds[2], power);
+  const s=new THREE.Vector3(CFG.spot.x,CFG.spot.y,CFG.spot.z);
+  const t=new THREE.Vector3(aimX,targetY,CFG.goal.z);
+  const dir=t.clone().sub(s).normalize();
+  const vel=dir.multiplyScalar(speed);
+  const spinY = (Math.random()-0.5)*14*power;
+  const spinX = (Math.random()-0.5)*8*power;
+  ballBody.velocity.set(vel.x,vel.y,vel.z);
+  ballBody.angularVelocity.set(spinX, spinY, 0);
+  state='aiFly';
+  fly = { by:'a', power, aimX, targetY, t:0, resolved:false };
+  cameraShake = power*0.10;
+  audio.kick(power);
+}
+
+// ----------------------------- 物理：每帧施加马格努斯 -------------------------
+function applyBallForces(dt){
+  if(!fly) return;
+  const v = ballBody.velocity;
+  const w = ballBody.angularVelocity;
+  // F = k * (w x v)   (质量已在 body 设定，applyForce 自动 /mass)
+  const fx = w.y*v.z - w.z*v.y;
+  const fy = w.z*v.x - w.x*v.z;
+  const fz = w.x*v.y - w.y*v.x;
+  const k = CFG.magnus;
+  ballBody.force.set(fx*k, fy*k, fz*k);
+}
+
+// ----------------------------- 飞行判定 --------------------------------------
+function updateFlight(dt){
+  if(!fly || fly.resolved) return;
+  fly.t += dt;
+  const gz = CFG.goal.z;
+  const bx = ballBody.position.x, by = ballBody.position.y, bz = ballBody.position.z;
+
+  // 谁在守门？
+  // 玩家射门(fly.by='p') → AI 守门; AI射门(fly.by='a') → 玩家守门(keeperCtrl)
+  const isPlayerAttacking = fly.by==='p';
+
+  // 更新守门员位置
+  if(isPlayerAttacking){
+    // AI 守门
+    updateAIGoalkeeper(dt);
+  } else {
+    // 玩家控制守门员
+    updatePlayerGoalkeeper(dt);
+  }
+
+  // 通过球门线判定
+  if(bz >= gz && ballBody.velocity.z>0){
+    resolveAtLine(isPlayerAttacking);
+    return;
+  }
+  // 偏出 / 出界 / 落地远
+  if(by < 0.06 && Math.abs(bz-gz)>2 && bz<gz){
+    // 还在飞，让地面弹一下；但若已停下或飞向门后则判罚
+  }
+  if(fly.t>4.0 || bz > gz+3 || Math.abs(bx)>14){
+    finishShot(isPlayerAttacking, 'miss');
+  }
+}
+
+function updateAIGoalkeeper(dt){
+  // 玩家射门 → AI 守门
+  if(!aiReact){ keeper.position.x = 0; return; }
+  aiReact.t += dt;
+  if(aiReact.t >= aiReact.react && !aiReact.decided){
+    aiReact.decided = true;
+    aiReact.diveDir = aiReact.fail ? (Math.random()<0.5?-1:1) : Math.sign(aiReact.targetX);
+  }
+  if(aiReact.decided){
+    // 移动/扑救
+    const target = aiReact.targetX;
+    const reach = CFG.diff[difficulty].dive;
+    const desired = THREE.MathUtils.clamp(target, -CFG.goal.w/2+0.4, CFG.goal.w/2-0.4);
+    keeperCtrl.x += (desired - keeperCtrl.x) * Math.min(1, dt*aiReact.speed);
+    keeper.position.x = keeperCtrl.x;
+    // 临近球门线时扑救姿势
+    const ballNear = ballBody.position.z > CFG.goal.z-2.2;
+    if(ballNear){ poseKeeperDive(aiReact.diveDir); keeper.position.y = Math.abs(aiReact.diveDir)*0.15; }
+    else { poseKeeperIdle(); keeper.position.y=0; }
+  } else {
+    // 反应延迟：微微预摆
+    keeper.position.x = Math.sin(fly.t*8)*0.15;
+  }
+}
+
+function updatePlayerGoalkeeper(dt){
+  // 玩家守门：鼠标横向控制 + 跳跃扑救
+  const targetX = THREE.MathUtils.clamp(input.mx*(CFG.goal.w/2-0.4), -CFG.goal.w/2+0.4, CFG.goal.w/2-0.4);
+  keeperCtrl.x += (targetX - keeperCtrl.x) * Math.min(1, dt*9);
+  keeper.position.x = keeperCtrl.x;
+
+  if(input.diveQueued){
+    input.diveQueued=false;
+    keeperCtrl.diving = 0.45;            // 扑救持续时间
+    keeperCtrl.diveDir = input.mx;       // 朝鼠标方向扑
+    if(Math.abs(keeperCtrl.diveDir)<0.15) keeperCtrl.diveDir = 0; // 原地跳
+  }
+  if(keeperCtrl.diving>0){
+    keeperCtrl.diving -= dt;
+    const dir = Math.sign(keeperCtrl.diveDir);
+    poseKeeperDive(dir);
+    keeper.position.y = Math.max(0, 0.5*(keeperCtrl.diving/0.45)) ;  // 起跳高度
+    keeper.position.x += dir*dt*2.0;
+  } else {
+    poseKeeperIdle(); keeper.position.y=0;
+  }
+}
+
+function keeperReach(isPlayerAttacking){
+  // 返回守门员当前覆盖椭圆 (cx, cy, rx 水平半径, ry 垂直半径)
+  let cx = keeper.position.x;
+  let cy = 1.3;
+  let rx = 0.9, ry = 1.1;   // 原地站立覆盖范围(约 1.8m 宽)
+  if(isPlayerAttacking){
+    // AI 守门：decided 后向目标横移，临近时扑救展开双臂
+    const ballNear = aiReact && aiReact.decided && ballBody.position.z > CFG.goal.z-2.2;
+    if(ballNear){ rx = 1.35; ry = 1.55; }   // 扑救展开
+    else { rx = 0.9; ry = 1.1; }
+  } else {
+    // 玩家守门
+    if(keeperCtrl.diving>0){ rx = 2.0; ry = 1.7; cy = 1.5; }  // 扑救中
+    else { rx = 0.9; ry = 1.15; }
+  }
+  return { cx, cy, rx, ry };
+}
+
+function resolveAtLine(isPlayerAttacking){
+  const bx = ballBody.position.x, by = ballBody.position.y;
+  const inFrame = Math.abs(bx) < CFG.goal.w/2 && by < CFG.goal.h;
+  if(!inFrame){ finishShot(isPlayerAttacking, 'miss'); return; }
+  const r = keeperReach(isPlayerAttacking);
+  // 椭圆判定
+  const nx = (bx-r.cx)/r.rx, ny = (by-r.cy)/r.ry;
+  const blocked = (nx*nx + ny*ny) < 1;
+  if(blocked){
+    finishShot(isPlayerAttacking, 'save');
+  } else {
+    // 进球
+    triggerNetRipple(bx, Math.min(by, CFG.goal.h-0.1), fly.power);
+    finishShot(isPlayerAttacking, 'goal');
+  }
+}
+
+function finishShot(isPlayerAttacking, result){
+  if(fly) fly.resolved = true;
+  state='roundDone';
+  const goal = (result==='goal');
+  // 统计
+  if(isPlayerAttacking){ pShots++; if(goal) pMade++; }
+  else { aShots++; if(goal) aMade++; }
+  if(goal){ if(isPlayerAttacking) scoreP++; else scoreA++; spawnCheer(); audio.cheer(); }
+  else if(result==='save'){ audio.whistle(); }
+  else { audio.miss(); }
+
+  showBanner(result, isPlayerAttacking);
+  updateScoreUI(goal);
+
+  // 把球弹开（非进球）
+  if(result==='save'){ ballBody.velocity.set(-Math.sign(ballBody.velocity.x||1)*4, 3, -6); }
+  if(result==='miss'){ /* 让其继续飞 */ }
+
+  setTimeout(()=>{ afterShotCheck(isPlayerAttacking); }, 1900);
+}
+
+function afterShotCheck(isPlayerAttacking){
+  // 决定下一步
+  const turnsDone = round;
+  // 5 轮 = 10 脚。判断是否结束
+  const totalKicks = CFG.totalRounds*2;
+  if(turnsDone >= totalKicks){
+    // 是否一方已无法追平？早胜判定简化：5 轮打完直接比
+    if(scoreP!==scoreA){ endGame(); return; }
+    suddenDeath = true;
+  }
+  if(suddenDeath){
+    // 突然死亡：每方各踢一脚后比较
+    if(round % 2 === 0 && scoreP!==scoreA){ endGame(); return; }
+  }
+  nextTurn();
+}
+
+function endGame(){
+  state='gameOver';
+  let txt, cls;
+  if(scoreP>scoreA){ txt='胜 利！'; cls='win'; }
+  else if(scoreP<scoreA){ txt='失 败'; cls='lose'; }
+  else { txt='平 局'; cls='draw'; }
+  ui.startCard.innerHTML = `
+    <h1><span class="g">比赛</span> <span class="y">结束</span></h1>
+    <div class="res ${cls}">${scoreP} : ${scoreA}</div>
+    <p>玩家 ${pMade}/${pShots} &nbsp;·&nbsp; AI ${aMade}/${aShots}<br>${txt}</p>
+    <button class="btn" id="againBtn">再来一局</button>`;
+  ui.overlay.classList.remove('hidden');
+  $('againBtn').addEventListener('click', ()=>{
+    // 重建开始卡
+    location.reload();
+  });
+}
+
+// ----------------------------- UI 更新 ---------------------------------------
+function updateScoreUI(flip){
+  $('scoreP').textContent = scoreP; $('scoreA').textContent = scoreA;
+  if(flip){
+    const el = scoreP>scoreA? $('scoreP') : (scoreA>scoreP? $('scoreA'):null);
+    if(el){ el.classList.remove('flip'); void el.offsetWidth; el.classList.add('flip'); }
+  }
+  $('pStat').textContent = `${pMade}/${pShots}`;
+  $('aStat').textContent = `${aMade}/${aShots}`;
+}
+
+function showBanner(result, isPlayerAttacking){
+  let big, sub, cls;
+  if(result==='goal'){ big='GOAL!'; sub = isPlayerAttacking?'玩家进球':'AI 进球'; cls='goal'; }
+  else if(result==='save'){ big='SAVE!'; sub = isPlayerAttacking?'AI 扑出':'你扑出了！'; cls='save'; }
+  else { big='MISS'; sub = isPlayerAttacking?'射偏了':'AI 射偏'; cls='miss'; }
+  ui.bannerBig.textContent = big; ui.bannerBig.className='big '+cls;
+  ui.bannerSub.textContent = sub;
+  ui.banner.classList.add('show');
+  setTimeout(()=>ui.banner.classList.remove('show'), 1500);
+}
+
+// ----------------------------- 主循环 ----------------------------------------
+function animate(){
+  requestAnimationFrame(animate);
+  const dt = Math.min(clock.getDelta(), 0.033);
+
+  // 玩家瞄准阶段：实时更新力量条 + 预测线
+  if(state==='playerAim' && input.aiming){
+    const a = readAim();
+    ui.powerFill.style.width = (a.power*100).toFixed(0)+'%';
+    updateAimLine(a.vel.x, a.vel.y, a.vel.z, a.spinX, a.spinY);
+    aimLine.visible=true;
+  } else if(state==='playerAim'){
+    // 没拖拽时隐藏线尾
+    aimLine.geometry.setDrawRange(0,0);
+  }
+
+  // 物理
+  if(state==='ballFly' || state==='aiFly'){
+    applyBallForces(dt);
+    world.step(1/60, dt, 3);
+    updateFlight(dt);
+  }
+
+  // 同步球 mesh
+  ballMesh.position.copy(ballBody.position);
+  // 旋转视觉
+  if(state==='ballFly'||state==='aiFly'){
+    const w = ballBody.angularVelocity;
+    ballMesh.rotation.x += w.x*dt; ballMesh.rotation.y += w.y*dt; ballMesh.rotation.z += w.z*dt;
+  }
+
+  // 球网 / 粒子
+  updateNet(dt);
+  updateCheer(dt);
+
+  // 镜头震动 + 每帧 lookAt(确保视角稳定)
+  if(cameraShake>0.001){
+    camera.position.x = cameraTarget.x + (Math.random()-0.5)*cameraShake;
+    camera.position.y = cameraTarget.y + (Math.random()-0.5)*cameraShake;
+    camera.position.z = cameraTarget.z;
+    cameraShake *= 0.88;
+  } else {
+    camera.position.copy(cameraTarget);
+  }
+  camera.lookAt(0, state==='defend'?1.5:1.2, state==='defend'?2:8);
+
+  renderer.render(scene, camera);
+}
+
+// ----------------------------- 极简音效 (WebAudio) ---------------------------
+const audio = (()=>{
+  let ctx=null;
+  function ensure(){ if(!ctx){ try{ ctx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return ctx; }
+  function tone(freq, dur, type='sine', vol=0.2, slideTo=null){
+    const c=ensure(); if(!c) return;
+    const o=c.createOscillator(), g=c.createGain();
+    o.type=type; o.frequency.value=freq;
+    if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, c.currentTime+dur);
+    g.gain.value=vol; g.gain.exponentialRampToValueAtTime(0.001, c.currentTime+dur);
+    o.connect(g).connect(c.destination); o.start(); o.stop(c.currentTime+dur);
+  }
+  return {
+    kick(power){ tone(180+power*120, 0.12, 'triangle', 0.25, 80); },
+    whistle(){ tone(2200, 0.18, 'square', 0.12, 1400); },
+    cheer(){ const c=ensure(); if(!c) return;
+      for(let i=0;i<6;i++) setTimeout(()=>tone(400+Math.random()*800, 0.18, 'sawtooth', 0.06), i*60); },
+    miss(){ tone(200,0.2,'sine',0.18,120); },
+  };
+})();
+
+// 启动
+init();
+</script>
+</body>
+</html>
