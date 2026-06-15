@@ -1,0 +1,1517 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D 点球大战</title>
+<style>
+  :root { --bg: #1a1a2e; --panel: #16213e; --gold: #f0c040; --accent: #e94560; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    overflow: hidden; background: #000; font-family: 'Segoe UI', system-ui, sans-serif;
+    user-select: none; -webkit-user-select: none; touch-action: none;
+  }
+  canvas { display: block; position: fixed; top: 0; left: 0; }
+
+  #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+  #ui > * { pointer-events: auto; }
+
+  /* Scoreboard */
+  #scoreboard {
+    position: absolute; top: 20px; left: 20px;
+    background: var(--panel); border: 2px solid #2a2a4a; border-radius: 16px;
+    padding: 16px 24px; display: flex; align-items: center; gap: 16px;
+    color: #fff; font-size: 18px; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #scoreboard .team { text-align: center; min-width: 60px; }
+  #scoreboard .team .label { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 1px; }
+  #scoreboard .team .score {
+    font-size: 42px; font-weight: 900; line-height: 1.1;
+    background: linear-gradient(180deg, #fff 0%, #aaa 100%);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  #scoreboard .team .score.flip { transform: scaleY(0); }
+  #scoreboard .vs { color: #555; font-weight: 700; font-size: 14px; }
+  #scoreboard .stats { font-size: 11px; color: #666; margin-top: 2px; }
+
+  /* Round info */
+  #round-info {
+    position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--panel); border: 2px solid #2a2a4a; border-radius: 12px;
+    padding: 10px 24px; color: #fff; font-size: 15px; font-weight: 600;
+    text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  #round-info .round { color: var(--gold); font-size: 13px; letter-spacing: 2px; text-transform: uppercase; }
+
+  /* Power bar */
+  #power-bar-wrap {
+    position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%);
+    width: 200px; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;
+    overflow: hidden; opacity: 0; transition: opacity 0.2s;
+  }
+  #power-bar-wrap.active { opacity: 1; }
+  #power-bar {
+    height: 100%; background: linear-gradient(90deg, #4ecb71, #f0c040, #e94560);
+    border-radius: 4px; transition: width 0.05s linear; width: 0%;
+  }
+
+  /* Message */
+  #message {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%);
+    color: #fff; font-size: 48px; font-weight: 900; text-shadow: 0 4px 20px rgba(0,0,0,0.7);
+    opacity: 0; transition: opacity 0.3s; text-align: center; pointer-events: none;
+  }
+  #message.show { opacity: 1; }
+  #message.goal { color: #4ecb71; }
+  #message.save { color: #e94560; }
+  #message.miss { color: #888; }
+
+  /* Difficulty selector */
+  #difficulty {
+    position: absolute; top: 20px; right: 20px;
+    display: flex; gap: 6px;
+  }
+  #difficulty button {
+    padding: 8px 16px; border: 2px solid #2a2a4a; border-radius: 20px;
+    background: var(--panel); color: #888; cursor: pointer; font-size: 13px;
+    transition: all 0.2s; font-family: inherit;
+  }
+  #difficulty button:hover { border-color: #fff; color: #fff; }
+  #difficulty button.active { border-color: var(--gold); color: var(--gold); background: #2a2a20; }
+
+  /* Instructions */
+  #instructions {
+    position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.6); font-size: 13px; text-align: center;
+    background: rgba(0,0,0,0.5); padding: 8px 20px; border-radius: 20px;
+    transition: opacity 0.5s; pointer-events: none;
+  }
+
+  /* Restart button */
+  #restart {
+    position: absolute; bottom: 30px; right: 30px;
+    padding: 10px 24px; border: 2px solid var(--gold); border-radius: 24px;
+    background: rgba(0,0,0,0.6); color: var(--gold); cursor: pointer;
+    font-size: 14px; font-family: inherit; transition: all 0.2s;
+  }
+  #restart:hover { background: var(--gold); color: #000; }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <div id="scoreboard">
+    <div class="team">
+      <div class="label">玩家</div>
+      <div class="score" id="score-player">0</div>
+      <div class="stats" id="stats-player">射正 0/0</div>
+    </div>
+    <div class="vs">VS</div>
+    <div class="team">
+      <div class="label">AI</div>
+      <div class="score" id="score-ai">0</div>
+      <div class="stats" id="stats-ai">射正 0/0</div>
+    </div>
+  </div>
+
+  <div id="round-info">
+    <div class="round">回合</div>
+    <div id="round-text">1 / 5 · 你的回合</div>
+  </div>
+
+  <div id="difficulty">
+    <button data-diff="easy">简单</button>
+    <button data-diff="normal" class="active">普通</button>
+    <button data-diff="hard">困难</button>
+  </div>
+
+  <div id="power-bar-wrap"><div id="power-bar"></div></div>
+  <div id="message"></div>
+  <div id="instructions">按住鼠标拖拽瞄准，松开射门 | A/D 移动守门员，空格起跳扑救</div>
+  <button id="restart">重新开始</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// ==================== CONSTANTS ====================
+const GOAL_WIDTH = 7.32;
+const GOAL_HEIGHT = 2.44;
+const GOAL_DEPTH = 2;
+const GOAL_Z = -11;
+const PENALTY_Z = 0;
+const BALL_RADIUS = 0.11;
+const GRAVITY = 9.81;
+const MAGNUS_COEFF = 0.00015;
+const MAX_POWER = 28;
+const MIN_POWER = 14;
+const MAX_DRAG = 200;
+const TOTAL_ROUNDS = 5;
+
+// ==================== DOM REFS ====================
+const scorePlayerEl = document.getElementById('score-player');
+const scoreAIEl = document.getElementById('score-ai');
+const statsPlayerEl = document.getElementById('stats-player');
+const statsAIEl = document.getElementById('stats-ai');
+const roundTextEl = document.getElementById('round-text');
+const messageEl = document.getElementById('message');
+const powerBarWrap = document.getElementById('power-bar-wrap');
+const powerBar = document.getElementById('power-bar');
+const instructionsEl = document.getElementById('instructions');
+const diffBtns = document.querySelectorAll('#difficulty button');
+
+// ==================== THREE.JS SETUP ====================
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+scene.fog = new THREE.Fog(0x1a1a2e, 30, 80);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.5, 100);
+camera.position.set(0, 3.8, 13);
+camera.lookAt(0, 1.2, -5);
+const cameraBase = camera.position.clone();
+const cameraLookBase = new THREE.Vector3(0, 1.2, -5);
+
+// Lighting
+const ambientLight = new THREE.AmbientLight(0x334466, 1.8);
+scene.add(ambientLight);
+
+const sunLight = new THREE.DirectionalLight(0xffeedd, 4);
+sunLight.position.set(20, 25, 5);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.width = 2048;
+sunLight.shadow.mapSize.height = 2048;
+sunLight.shadow.camera.near = 0.5;
+sunLight.shadow.camera.far = 80;
+sunLight.shadow.camera.left = -25;
+sunLight.shadow.camera.right = 25;
+sunLight.shadow.camera.top = 25;
+sunLight.shadow.camera.bottom = -5;
+sunLight.shadow.bias = -0.0001;
+scene.add(sunLight);
+
+const fillLight = new THREE.DirectionalLight(0x8899cc, 1.5);
+fillLight.position.set(-5, 3, -2);
+scene.add(fillLight);
+
+const stadiumLight = new THREE.PointLight(0xff9944, 30, 50);
+stadiumLight.position.set(0, 12, -18);
+scene.add(stadiumLight);
+
+// ==================== CANNON.JS WORLD ====================
+const world = new CANNON.World();
+world.gravity.set(0, -GRAVITY, 0);
+world.broadphase = new CANNON.NaiveBroadphase();
+world.solver.iterations = 10;
+world.defaultContactMaterial.friction = 0.4;
+world.defaultContactMaterial.restitution = 0.3;
+
+const groundBody = new CANNON.Body({ mass: 0, shape: new CANNON.Plane() });
+groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+world.addBody(groundBody);
+
+// ==================== ENVIRONMENT ====================
+// Ground / Pitch
+const groundGeo = new THREE.PlaneGeometry(50, 60);
+const groundCanvas = document.createElement('canvas');
+groundCanvas.width = 512; groundCanvas.height = 512;
+const gctx = groundCanvas.getContext('2d');
+// Grass pattern
+gctx.fillStyle = '#3a7d3a';
+gctx.fillRect(0, 0, 512, 512);
+for (let i = 0; i < 8000; i++) {
+  const x = Math.random() * 512, y = Math.random() * 512;
+  gctx.fillStyle = Math.random() < 0.5 ? '#358035' : '#408840';
+  gctx.fillRect(x, y, 3, 2);
+}
+// Pitch stripes
+const stripeGrad = gctx.createLinearGradient(0, 120, 0, 392);
+gctx.fillStyle = 'rgba(255,255,255,0.08)';
+for (let i = 0; i < 6; i++) {
+  gctx.fillRect(0, 120 + i * 55, 512, 28);
+}
+const groundTex = new THREE.CanvasTexture(groundCanvas);
+groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+groundTex.repeat.set(2, 3);
+const groundMat = new THREE.MeshStandardMaterial({ map: groundTex, roughness: 0.85, metalness: 0 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = 0;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Penalty spot circle
+const spotGeo = new THREE.CircleGeometry(0.15, 32);
+spotGeo.rotateX(-Math.PI / 2);
+const spotMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6 });
+const spotMesh = new THREE.Mesh(spotGeo, spotMat);
+spotMesh.position.set(0, 0.005, PENALTY_Z);
+spotMesh.receiveShadow = true;
+scene.add(spotMesh);
+
+// Penalty arc
+const arcGeo = new THREE.TorusGeometry(9.15, 0.04, 16, 64, Math.PI / 3);
+arcGeo.rotateX(-Math.PI / 2);
+arcGeo.rotateY(Math.PI / 3);
+const arcMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
+const arcMesh = new THREE.Mesh(arcGeo, arcMat);
+arcMesh.position.set(0, 0.01, PENALTY_Z);
+arcMesh.receiveShadow = true;
+scene.add(arcMesh);
+
+// Stadium stands (behind goal)
+const standGroup = new THREE.Group();
+scene.add(standGroup);
+
+const standGeo = new THREE.CylinderGeometry(22, 24, 8, 32, 1, true, -Math.PI * 0.35, Math.PI * 0.7);
+const standMat = new THREE.MeshStandardMaterial({ color: 0x334455, roughness: 0.9, side: THREE.DoubleSide });
+const stand = new THREE.Mesh(standGeo, standMat);
+stand.position.set(0, 3, -22);
+stand.receiveShadow = true;
+standGroup.add(stand);
+
+// Crowd (instanced boxes)
+const crowdCount = 600;
+const crowdGeo = new THREE.CapsuleGeometry(0.12, 0.3, 4, 8);
+const crowdMat = new THREE.MeshStandardMaterial({ roughness: 0.7 });
+const crowdMesh = new THREE.InstancedMesh(crowdGeo, crowdMat, crowdCount);
+crowdMesh.castShadow = true;
+const dummy = new THREE.Object3D();
+const crowdColors = [0xe94560, 0xf0c040, 0x4ecb71, 0x4488cc, 0xff6644, 0xffffff, 0x222244, 0xcc8844];
+for (let i = 0; i < crowdCount; i++) {
+  const angle = (Math.random() - 0.5) * Math.PI * 0.65;
+  const radius = 21.5 + Math.random() * 4;
+  const row = Math.floor(Math.random() * 6);
+  const y = -0.5 + row * 1.3 + Math.random() * 0.5;
+  const x = Math.sin(angle) * radius;
+  const z = -22 + Math.cos(angle) * radius - (22 - Math.cos(angle) * radius);
+  // Position in stand
+  const sx = Math.sin(angle) * radius;
+  const sz = Math.cos(angle) * radius - 22;
+  const sy = y;
+  dummy.position.set(sx, sy, sz);
+  dummy.scale.setScalar(0.7 + Math.random() * 0.6);
+  dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+  dummy.updateMatrix();
+  crowdMesh.setMatrixAt(i, dummy.matrix);
+  crowdMesh.setColorAt(i, new THREE.Color(crowdColors[Math.floor(Math.random() * crowdColors.length)]));
+}
+crowdMesh.instanceMatrix.needsUpdate = true;
+crowdMesh.instanceColor.needsUpdate = true;
+standGroup.add(crowdMesh);
+
+// ==================== GOAL ====================
+const goalGroup = new THREE.Group();
+scene.add(goalGroup);
+
+// Goal frame material
+const postMat = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.3, metalness: 0.6 });
+const postRadius = 0.06;
+
+// Posts
+function createPost(x, y, z, h) {
+  const geo = new THREE.CylinderGeometry(postRadius, postRadius, h, 16);
+  const mesh = new THREE.Mesh(geo, postMat);
+  mesh.position.set(x, y + h / 2, z);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+// Left post
+goalGroup.add(createPost(-GOAL_WIDTH / 2, 0, GOAL_Z, GOAL_HEIGHT));
+// Right post
+goalGroup.add(createPost(GOAL_WIDTH / 2, 0, GOAL_Z, GOAL_HEIGHT));
+
+// Crossbar
+const crossbarGeo = new THREE.CylinderGeometry(postRadius, postRadius, GOAL_WIDTH, 16);
+crossbarGeo.rotateZ(Math.PI / 2);
+const crossbar = new THREE.Mesh(crossbarGeo, postMat);
+crossbar.position.set(0, GOAL_HEIGHT, GOAL_Z);
+crossbar.castShadow = true;
+scene.add(crossbar);
+
+// Back frame bars
+const backBarMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.4, metalness: 0.5 });
+for (const sx of [-GOAL_WIDTH / 2, GOAL_WIDTH / 2]) {
+  const barGeo = new THREE.CylinderGeometry(0.03, 0.03, GOAL_DEPTH, 8);
+  barGeo.rotateX(Math.PI / 2);
+  const bar = new THREE.Mesh(barGeo, backBarMat);
+  bar.position.set(sx, GOAL_HEIGHT, GOAL_Z - GOAL_DEPTH / 2);
+  bar.castShadow = true;
+  scene.add(bar);
+  // Vertical back bar
+  const vbar = createPost(sx, 0, GOAL_Z - GOAL_DEPTH, GOAL_HEIGHT);
+  vbar.material = backBarMat;
+  scene.add(vbar);
+}
+// Back crossbar
+const backCrossGeo = new THREE.CylinderGeometry(0.03, 0.03, GOAL_WIDTH, 8);
+backCrossGeo.rotateZ(Math.PI / 2);
+const backCross = new THREE.Mesh(backCrossGeo, backBarMat);
+backCross.position.set(0, GOAL_HEIGHT, GOAL_Z - GOAL_DEPTH);
+scene.add(backCross);
+
+// Goal base/ground bar
+const baseBarGeo = new THREE.BoxGeometry(GOAL_WIDTH, 0.06, 0.06);
+const baseBar = new THREE.Mesh(baseBarGeo, postMat);
+baseBar.position.set(0, 0.03, GOAL_Z);
+baseBar.receiveShadow = true;
+scene.add(baseBar);
+
+// ==================== NET CLOTH SIMULATION ====================
+const NET_SEG_X = 18;
+const NET_SEG_Y = 10;
+const netParticles = [];
+const netConstraints = [];
+
+const netOrigin = new THREE.Vector3(-GOAL_WIDTH / 2, 0, GOAL_Z);
+const netW = GOAL_WIDTH;
+const netH = GOAL_HEIGHT;
+
+function netIndex(x, y) { return y * (NET_SEG_X + 1) + x; }
+
+// Create particles
+for (let y = 0; y <= NET_SEG_Y; y++) {
+  for (let x = 0; x <= NET_SEG_X; x++) {
+    const px = netOrigin.x + (x / NET_SEG_X) * netW;
+    const py = netOrigin.y + (y / NET_SEG_Y) * netH;
+    const pz = netOrigin.z;
+    const pinned = (x === 0 || x === NET_SEG_X || y === NET_SEG_Y);
+    netParticles.push({
+      pos: new THREE.Vector3(px, py, pz),
+      prev: new THREE.Vector3(px, py, pz),
+      pinned,
+    });
+  }
+}
+
+// Create constraints
+for (let y = 0; y <= NET_SEG_Y; y++) {
+  for (let x = 0; x < NET_SEG_X; x++) {
+    netConstraints.push({ i: netIndex(x, y), j: netIndex(x + 1, y), rest: netW / NET_SEG_X });
+  }
+}
+for (let y = 0; y < NET_SEG_Y; y++) {
+  for (let x = 0; x <= NET_SEG_X; x++) {
+    netConstraints.push({ i: netIndex(x, y), j: netIndex(x, y + 1), rest: netH / NET_SEG_Y });
+  }
+}
+
+// Net mesh
+const netMeshGeo = new THREE.PlaneGeometry(netW, netH, NET_SEG_X, NET_SEG_Y);
+netMeshGeo.rotateY(0);
+const netMat = new THREE.MeshStandardMaterial({
+  color: 0xdddddd, roughness: 0.8, side: THREE.DoubleSide,
+  transparent: true, opacity: 0.7, depthWrite: false
+});
+const netMesh = new THREE.Mesh(netMeshGeo, netMat);
+netMesh.position.copy(netOrigin);
+netMesh.position.x += netW / 2;
+netMesh.position.y += netH / 2;
+netMesh.renderOrder = 1;
+scene.add(netMesh);
+
+// Top net
+const topNetGeo = new THREE.PlaneGeometry(netW, GOAL_DEPTH, NET_SEG_X, 4);
+topNetGeo.rotateX(-Math.PI / 2);
+const topNet = new THREE.Mesh(topNetGeo, netMat.clone());
+topNet.position.set(0, GOAL_HEIGHT, GOAL_Z - GOAL_DEPTH / 2);
+topNet.renderOrder = 1;
+scene.add(topNet);
+
+// Side nets
+for (const sx of [-GOAL_WIDTH / 2, GOAL_WIDTH / 2]) {
+  const sideGeo = new THREE.PlaneGeometry(GOAL_DEPTH, netH, 4, NET_SEG_Y);
+  sideGeo.rotateY(sx < 0 ? Math.PI / 2 : -Math.PI / 2);
+  const sideNet = new THREE.Mesh(sideGeo, netMat.clone());
+  sideNet.position.set(sx, netH / 2, GOAL_Z - GOAL_DEPTH / 2);
+  sideNet.renderOrder = 1;
+  scene.add(sideNet);
+}
+
+function updateNetPhysics(dt, ballPos) {
+  dt = Math.min(dt, 0.05);
+  const subSteps = 3;
+  const sdt = dt / subSteps;
+
+  for (let step = 0; step < subSteps; step++) {
+    // Verlet integration
+    for (const p of netParticles) {
+      if (p.pinned) continue;
+      const vx = p.pos.x - p.prev.x;
+      const vy = p.pos.y - p.prev.y;
+      const vz = p.pos.z - p.prev.z;
+      p.prev.set(p.pos.x, p.pos.y, p.pos.z);
+      p.pos.x += vx * 0.97;
+      p.pos.y += vy * 0.97 - GRAVITY * sdt * sdt;
+      p.pos.z += vz * 0.97;
+    }
+
+    // Satisfy constraints
+    for (let iter = 0; iter < 4; iter++) {
+      for (const c of netConstraints) {
+        const a = netParticles[c.i];
+        const b = netParticles[c.j];
+        const dx = b.pos.x - a.pos.x;
+        const dy = b.pos.y - a.pos.y;
+        const dz = b.pos.z - a.pos.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+        const diff = (dist - c.rest) / dist;
+        const moveX = dx * diff * 0.5;
+        const moveY = dy * diff * 0.5;
+        const moveZ = dz * diff * 0.5;
+        if (!a.pinned) { a.pos.x += moveX; a.pos.y += moveY; a.pos.z += moveZ; }
+        if (!b.pinned) { b.pos.x -= moveX; b.pos.y -= moveY; b.pos.z -= moveZ; }
+      }
+    }
+
+    // Ball collision with net
+    if (ballPos && ballPos.z < GOAL_Z - 0.05 && ballPos.z > GOAL_Z - GOAL_DEPTH - 0.5) {
+      if (Math.abs(ballPos.x) < GOAL_WIDTH / 2 + 0.3 && ballPos.y < GOAL_HEIGHT + 0.3 && ballPos.y > -0.1) {
+        // Find nearest particle
+        let minDist = Infinity;
+        let nearest = 0;
+        for (let i = 0; i < netParticles.length; i++) {
+          const p = netParticles[i];
+          if (p.pinned) continue;
+          const dx = p.pos.x - ballPos.x;
+          const dy = p.pos.y - ballPos.y;
+          const dz = p.pos.z - ballPos.z;
+          const d = dx * dx + dy * dy + dz * dz;
+          if (d < minDist) { minDist = d; nearest = i; }
+        }
+        // Push nearby particles
+        const radius = 0.6;
+        if (minDist < radius * radius) {
+          for (let i = 0; i < netParticles.length; i++) {
+            const p = netParticles[i];
+            if (p.pinned) continue;
+            const dx = p.pos.x - ballPos.x;
+            const dy = p.pos.y - ballPos.y;
+            const dz = p.pos.z - ballPos.z;
+            const d = Math.sqrt(dx * dx + dy * dy + dz * dz) || 1e-6;
+            if (d < radius) {
+              const force = (1 - d / radius) * 0.8;
+              p.pos.x += (dx / d) * force;
+              p.pos.y += (dy / d) * force;
+              p.pos.z -= force * 0.3; // push backward
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Update mesh vertices
+  const positions = netMeshGeo.attributes.position;
+  for (let y = 0; y <= NET_SEG_Y; y++) {
+    for (let x = 0; x <= NET_SEG_X; x++) {
+      const p = netParticles[netIndex(x, y)];
+      const idx = netIndex(x, y);
+      // local coordinates relative to netOrigin
+      positions.setXYZ(idx, p.pos.x - netOrigin.x - netW / 2, p.pos.y - netOrigin.y - netH / 2, p.pos.z - netOrigin.z);
+    }
+  }
+  positions.needsUpdate = true;
+  netMeshGeo.computeVertexNormals();
+}
+
+// ==================== BALL ====================
+// Procedural soccer ball texture
+const ballCanvas = document.createElement('canvas');
+ballCanvas.width = 512; ballCanvas.height = 256;
+const bctx = ballCanvas.getContext('2d');
+
+// White background
+bctx.fillStyle = '#f5f5f5';
+bctx.fillRect(0, 0, 512, 256);
+
+// Draw pentagon patches (approximate soccer ball pattern in equirectangular)
+function drawPentagon(cx, cy, r) {
+  bctx.fillStyle = '#1a1a1a';
+  bctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const angle = -Math.PI / 2 + (i * Math.PI * 2) / 5;
+    const px = cx + Math.cos(angle) * r;
+    const py = cy + Math.sin(angle) * r * 0.55;
+    if (i === 0) bctx.moveTo(px, py);
+    else bctx.lineTo(px, py);
+  }
+  bctx.closePath();
+  bctx.fill();
+  bctx.strokeStyle = '#333';
+  bctx.lineWidth = 2;
+  bctx.stroke();
+}
+
+const pentagonUVs = [
+  [128, 40], [384, 44], [40, 105], [256, 58], [472, 105],
+  [128, 170], [384, 174], [256, 140], [40, 200], [472, 200],
+  [128, 228], [384, 224]
+];
+for (const [u, v] of pentagonUVs) {
+  drawPentagon(u, v, 28);
+  // Draw wrap duplicates for seamless tiling
+  if (u < 60) drawPentagon(u + 512, v, 28);
+  if (u > 452) drawPentagon(u - 512, v, 28);
+}
+
+// Seam lines
+bctx.strokeStyle = '#ccc';
+bctx.lineWidth = 1;
+bctx.globalAlpha = 0.3;
+for (let x = 0; x < 512; x += 42) {
+  bctx.beginPath();
+  bctx.moveTo(x, 0);
+  bctx.bezierCurveTo(x + 20, 128, x - 20, 128, x, 256);
+  bctx.stroke();
+}
+
+const ballTex = new THREE.CanvasTexture(ballCanvas);
+ballTex.colorSpace = THREE.SRGBColorSpace;
+
+const ballGeo = new THREE.SphereGeometry(BALL_RADIUS, 48, 36);
+const ballMat = new THREE.MeshStandardMaterial({ map: ballTex, roughness: 0.25, metalness: 0.05 });
+const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+ballMesh.castShadow = true;
+ballMesh.position.set(0, BALL_RADIUS, PENALTY_Z);
+scene.add(ballMesh);
+
+// Ball physics body
+const ballShape = new CANNON.Sphere(BALL_RADIUS);
+const ballBody = new CANNON.Body({ mass: 0.43, shape: ballShape });
+ballBody.position.set(0, BALL_RADIUS, PENALTY_Z);
+ballBody.linearDamping = 0.1;
+ballBody.angularDamping = 0.3;
+world.addBody(ballBody);
+
+// Ball spin indicator rings
+const ringGeo = new THREE.TorusGeometry(BALL_RADIUS * 1.02, 0.008, 16, 48);
+const ringMat = new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.4 });
+const ring1 = new THREE.Mesh(ringGeo, ringMat);
+const ring2 = new THREE.Mesh(ringGeo, ringMat);
+ballMesh.add(ring1);
+ballMesh.add(ring2);
+ring2.rotation.x = Math.PI / 2;
+
+// ==================== GOALKEEPER ====================
+const keeperGroup = new THREE.Group();
+scene.add(keeperGroup);
+keeperGroup.position.set(0, 0, GOAL_Z);
+
+function createBox(w, h, d, color) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  return mesh;
+}
+
+// Keeper body parts
+const bodyGroup = new THREE.Group();
+keeperGroup.add(bodyGroup);
+
+const torso = createBox(0.35, 0.55, 0.22, 0x44cc44);
+torso.position.y = 1.28;
+bodyGroup.add(torso);
+
+const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 16, 12), new THREE.MeshStandardMaterial({ color: 0xffcc99, roughness: 0.5 }));
+head.position.y = 1.75;
+head.castShadow = true;
+bodyGroup.add(head);
+
+// Hat/cap
+const hatGeo = new THREE.CylinderGeometry(0.1, 0.14, 0.08, 16);
+const hat = new THREE.Mesh(hatGeo, new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.5 }));
+hat.position.y = 1.88;
+bodyGroup.add(hat);
+
+// Arms
+const upperArmGeo = new THREE.BoxGeometry(0.1, 0.3, 0.1);
+const forearmGeo = new THREE.BoxGeometry(0.09, 0.28, 0.09);
+
+function createArm(side) {
+  const xSign = side === 'left' ? -1 : 1;
+  const armGroup = new THREE.Group();
+  armGroup.position.set(xSign * 0.24, 1.5, 0);
+
+  const upperArm = new THREE.Mesh(upperArmGeo, new THREE.MeshStandardMaterial({ color: 0x44cc44, roughness: 0.6 }));
+  upperArm.position.y = -0.15;
+  upperArm.castShadow = true;
+  armGroup.add(upperArm);
+
+  const forearmGroup = new THREE.Group();
+  forearmGroup.position.y = -0.3;
+  const forearm = new THREE.Mesh(forearmGeo, new THREE.MeshStandardMaterial({ color: 0xffcc99, roughness: 0.5 }));
+  forearm.position.y = -0.14;
+  forearm.castShadow = true;
+  forearmGroup.add(forearm);
+
+  // Glove
+  const glove = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshStandardMaterial({ color: 0xff6600, roughness: 0.3 }));
+  glove.position.y = -0.3;
+  glove.castShadow = true;
+  forearmGroup.add(glove);
+
+  armGroup.add(forearmGroup);
+  armGroup.userData = { forearmGroup, upperArm };
+  return armGroup;
+}
+
+const leftArm = createArm('left');
+const rightArm = createArm('right');
+bodyGroup.add(leftArm);
+bodyGroup.add(rightArm);
+
+// Legs
+const upperLegGeo = new THREE.BoxGeometry(0.14, 0.4, 0.14);
+const lowerLegGeo = new THREE.BoxGeometry(0.12, 0.38, 0.12);
+
+function createLeg(side) {
+  const xSign = side === 'left' ? -1 : 1;
+  const legGroup = new THREE.Group();
+  legGroup.position.set(xSign * 0.11, 0.9, 0);
+
+  const upperLeg = new THREE.Mesh(upperLegGeo, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 }));
+  upperLeg.position.y = -0.2;
+  upperLeg.castShadow = true;
+  legGroup.add(upperLeg);
+
+  const lowerLeg = new THREE.Mesh(lowerLegGeo, new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.7 }));
+  lowerLeg.position.y = -0.6;
+  lowerLeg.castShadow = true;
+  legGroup.add(lowerLeg);
+
+  // Boot
+  const boot = createBox(0.13, 0.07, 0.2, 0x111111);
+  boot.position.y = -0.82;
+  boot.position.z = 0.04;
+  legGroup.add(boot);
+
+  return legGroup;
+}
+
+const leftLeg = createLeg('left');
+const rightLeg = createLeg('right');
+bodyGroup.add(leftLeg);
+bodyGroup.add(rightLeg);
+
+// Keeper physics body (kinematic)
+const keeperShape = new CANNON.Box(new CANNON.Vec3(0.8, 0.9, 0.25));
+const keeperBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, shape: keeperShape });
+keeperBody.position.set(0, 0.95, GOAL_Z);
+world.addBody(keeperBody);
+
+// Keeper state
+let keeperTargetX = 0;
+let keeperDiveAmount = 0;
+let keeperDiveDir = 0;
+let keeperJumpAmount = 0;
+
+// ==================== TRAJECTORY LINE ====================
+const trajPoints = [];
+const trajLineGeo = new THREE.BufferGeometry();
+const trajLineMat = new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.4, gapSize: 0.25, transparent: true, opacity: 0.6 });
+const trajLine = new THREE.Line(trajLineGeo, trajLineMat);
+trajLine.visible = false;
+scene.add(trajLine);
+
+// Trajectory dots
+const dotsGroup = new THREE.Group();
+scene.add(dotsGroup);
+const dotGeo = new THREE.SphereGeometry(0.04, 8, 8);
+const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+const dotMeshes = [];
+for (let i = 0; i < 20; i++) {
+  const dot = new THREE.Mesh(dotGeo, dotMat);
+  dot.visible = false;
+  dotsGroup.add(dot);
+  dotMeshes.push(dot);
+}
+
+function predictTrajectory(startPos, velocity, steps = 80, dt = 0.025) {
+  const points = [];
+  const pos = startPos.clone();
+  const vel = velocity.clone();
+  const grav = new CANNON.Vec3(0, -GRAVITY, 0);
+
+  for (let i = 0; i < steps; i++) {
+    points.push(new THREE.Vector3(pos.x, pos.y, pos.z));
+    if (pos.y < 0 || pos.z < GOAL_Z - GOAL_DEPTH - 1) break;
+    // Simplified prediction (no Magnus for speed)
+    pos.x += vel.x * dt;
+    pos.y += vel.y * dt;
+    pos.z += vel.z * dt;
+    vel.x += grav.x * dt;
+    vel.y += grav.y * dt;
+    vel.z += grav.z * dt;
+  }
+  return points;
+}
+
+// ==================== CELEBRATION PARTICLES ====================
+const particlesGroup = new THREE.Group();
+scene.add(particlesGroup);
+const celebrationParticles = [];
+
+function spawnCelebration() {
+  const count = 200;
+  for (let i = 0; i < count; i++) {
+    const colors = [0xf0c040, 0xe94560, 0x4ecb71, 0x4488cc, 0xff6644, 0xffffff];
+    const geo = new THREE.BoxGeometry(0.08, 0.08, 0.08);
+    const mat = new THREE.MeshBasicMaterial({ color: colors[Math.floor(Math.random() * colors.length)], transparent: true, opacity: 1 });
+    const particle = new THREE.Mesh(geo, mat);
+    particle.position.set(
+      (Math.random() - 0.5) * 20,
+      2 + Math.random() * 8,
+      -22 + Math.random() * 5
+    );
+    particle.userData = {
+      vel: new THREE.Vector3((Math.random() - 0.5) * 8, 4 + Math.random() * 10, (Math.random() - 0.5) * 4),
+      life: 2 + Math.random() * 3,
+      age: 0
+    };
+    particlesGroup.add(particle);
+    celebrationParticles.push(particle);
+  }
+}
+
+function updateCelebration(dt) {
+  for (let i = celebrationParticles.length - 1; i >= 0; i--) {
+    const p = celebrationParticles[i];
+    p.userData.age += dt;
+    if (p.userData.age > p.userData.life) {
+      particlesGroup.remove(p);
+      p.material.dispose();
+      p.geometry.dispose();
+      celebrationParticles.splice(i, 1);
+      continue;
+    }
+    const progress = p.userData.age / p.userData.life;
+    p.userData.vel.y -= GRAVITY * dt;
+    p.position.x += p.userData.vel.x * dt;
+    p.position.y += p.userData.vel.y * dt;
+    p.position.z += p.userData.vel.z * dt;
+    p.material.opacity = 1 - progress;
+    p.scale.setScalar(1 - progress * 0.5);
+  }
+}
+
+// ==================== CAMERA SHAKE ====================
+let shakeIntensity = 0;
+let shakeDuration = 0;
+
+function triggerCameraShake(intensity, duration) {
+  shakeIntensity = Math.max(shakeIntensity, intensity);
+  shakeDuration = Math.max(shakeDuration, duration);
+}
+
+// ==================== GAME STATE ====================
+const STATE = {
+  PLAYER_AIMING: 'player_aiming',
+  PLAYER_SHOOTING: 'player_shooting',
+  PLAYER_RESULT: 'player_result',
+  TRANSITION_TO_AI: 'transition_to_ai',
+  AI_PREPARING: 'ai_preparing',
+  AI_SHOOTING: 'ai_shooting',
+  AI_RESULT: 'ai_result',
+  TRANSITION_TO_NEXT: 'transition_to_next',
+  GAME_OVER: 'game_over',
+};
+
+let gameState = STATE.PLAYER_AIMING;
+let currentRound = 1;
+let scorePlayer = 0;
+let scoreAI = 0;
+let shotsOnTargetPlayer = 0;
+let shotsOnTargetAI = 0;
+let totalShotsPlayer = 0;
+let totalShotsAI = 0;
+let difficulty = 'normal';
+let stateTimer = 0;
+let aiShotTarget = new THREE.Vector3();
+let aiShotPower = 0;
+let aiShotDelay = 0;
+let playerKeeperSpeed = 6;
+let lastBallInGoalArea = false;
+let messageTimeout = null;
+let shotTimer = 0;
+
+// ==================== INPUT ====================
+const keys = {};
+let mouseDown = false;
+let mouseStart = { x: 0, y: 0 };
+let mouseCurrent = { x: 0, y: 0 };
+let aimPower = 0;
+let aimDirection = new THREE.Vector3(0, 0, -1);
+
+window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; keys[e.code] = true; });
+window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; keys[e.code] = false; });
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (gameState === STATE.PLAYER_AIMING) {
+    mouseDown = true;
+    mouseStart.x = e.clientX;
+    mouseStart.y = e.clientY;
+    mouseCurrent.x = e.clientX;
+    mouseCurrent.y = e.clientY;
+    powerBarWrap.classList.add('active');
+  }
+});
+
+window.addEventListener('pointermove', (e) => {
+  if (mouseDown) {
+    mouseCurrent.x = e.clientX;
+    mouseCurrent.y = e.clientY;
+    updateAim();
+  }
+});
+
+window.addEventListener('pointerup', () => {
+  if (mouseDown && gameState === STATE.PLAYER_AIMING) {
+    mouseDown = false;
+    powerBarWrap.classList.remove('active');
+    if (aimPower > 0.05) {
+      shootBall();
+    }
+  }
+});
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// Difficulty buttons
+diffBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    diffBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    difficulty = btn.dataset.diff;
+  });
+});
+
+// Restart
+document.getElementById('restart').addEventListener('click', restartGame);
+
+function updateAim() {
+  const dx = mouseCurrent.x - mouseStart.x;
+  const dy = mouseCurrent.y - mouseStart.y;
+  const dragDist = Math.min(Math.sqrt(dx * dx + dy * dy), MAX_DRAG);
+  aimPower = dragDist / MAX_DRAG;
+
+  // Horizontal aim: maps to x-offset at goal
+  const hAngle = (dx / window.innerWidth) * 1.2; // radians, clamped
+  const vAngle = -(dy / window.innerHeight) * 0.7;
+
+  // Base direction: toward center of goal from penalty spot
+  const goalCenter = new THREE.Vector3(0, 1.1, GOAL_Z);
+  const ballPos = new THREE.Vector3(0, BALL_RADIUS, PENALTY_Z);
+  let dir = goalCenter.clone().sub(ballPos).normalize();
+
+  // Rotate horizontally
+  const hRot = new THREE.Matrix4().makeRotationY(hAngle);
+  dir.applyMatrix4(hRot);
+
+  // Rotate vertically
+  const right = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+  const vRot = new THREE.Matrix4().makeRotationAxis(right, vAngle);
+  dir.applyMatrix4(vRot);
+  dir.normalize();
+
+  aimDirection.copy(dir);
+
+  // Update power bar
+  powerBar.style.width = (aimPower * 100) + '%';
+
+  // Update trajectory preview
+  updateTrajectoryPreview();
+}
+
+function updateTrajectoryPreview() {
+  if (aimPower < 0.02) {
+    trajLine.visible = false;
+    dotMeshes.forEach(d => d.visible = false);
+    return;
+  }
+
+  const speed = MIN_POWER + aimPower * (MAX_POWER - MIN_POWER);
+  const vel = aimDirection.clone().multiplyScalar(speed);
+  const startPos = new CANNON.Vec3(0, BALL_RADIUS, PENALTY_Z);
+
+  const points = predictTrajectory(startPos, new CANNON.Vec3(vel.x, vel.y, vel.z));
+
+  // Update line
+  if (points.length > 1) {
+    const positions = [];
+    for (const p of points) positions.push(p.x, p.y, p.z);
+    trajLineGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    trajLineGeo.computeBoundingSphere();
+    trajLine.visible = true;
+
+    // Update dots (every 4th point)
+    for (let i = 0; i < dotMeshes.length; i++) {
+      const pi = i * 4;
+      if (pi < points.length) {
+        dotMeshes[i].position.copy(points[pi]);
+        dotMeshes[i].visible = true;
+      } else {
+        dotMeshes[i].visible = false;
+      }
+    }
+  }
+}
+
+function shootBall() {
+  const speed = MIN_POWER + aimPower * (MAX_POWER - MIN_POWER);
+  const vel = aimDirection.clone().multiplyScalar(speed);
+
+  // Apply velocity to physics body
+  ballBody.velocity.set(vel.x, vel.y, vel.z);
+
+  // Set angular velocity for Magnus effect
+  // Spin axis from drag direction
+  const dragDx = (mouseCurrent.x - mouseStart.x) / window.innerWidth;
+  const dragDy = (mouseCurrent.y - mouseStart.y) / window.innerHeight;
+  // Horizontal drag creates vertical spin axis (sidespin)
+  const spinY = dragDx * 60;
+  // Vertical drag creates horizontal spin axis (topspin/backspin)
+  const spinX = dragDy * 40;
+  ballBody.angularVelocity.set(spinX, spinY, 0);
+
+  // Hide trajectory
+  trajLine.visible = false;
+  dotMeshes.forEach(d => d.visible = false);
+  aimPower = 0;
+  powerBar.style.width = '0%';
+
+  // Trigger camera shake based on power
+  triggerCameraShake(speed / MAX_POWER * 0.25, 0.4);
+
+  // Update game state
+  gameState = STATE.PLAYER_SHOOTING;
+  totalShotsPlayer++;
+  instructionsEl.style.opacity = '0';
+
+  // Compute AI keeper response time
+  const aiResponseTime = difficulty === 'easy' ? 0.3 : difficulty === 'normal' ? 0.15 : 0.02;
+  stateTimer = aiResponseTime;
+
+  // Pre-compute where ball will cross goal line for AI
+  computeBallGoalCrossing(vel);
+}
+
+let predictedCrossPoint = new THREE.Vector3(0, 1.1, GOAL_Z);
+let predictedCrossTime = 0.5;
+
+function computeBallGoalCrossing(vel) {
+  // Simple simulation to find where ball crosses z = GOAL_Z
+  const pos = new CANNON.Vec3(0, BALL_RADIUS, PENALTY_Z);
+  const v = vel.clone();
+  const dt = 0.02;
+  let t = 0;
+  for (let i = 0; i < 300; i++) {
+    if (pos.z <= GOAL_Z) {
+      predictedCrossPoint.set(pos.x, pos.y, pos.z);
+      predictedCrossTime = t;
+      return;
+    }
+    pos.x += v.x * dt;
+    pos.y += v.y * dt;
+    pos.z += v.z * dt;
+    v.y -= GRAVITY * dt;
+    t += dt;
+    if (pos.y < 0) break;
+  }
+  // Default: estimate
+  predictedCrossPoint.set(0, 1.1, GOAL_Z);
+  predictedCrossTime = 0.4;
+}
+
+// ==================== AI BEHAVIOR ====================
+function aiChooseShotTarget() {
+  // AI picks a random target in the goal
+  const margin = 0.4;
+  let tx = (Math.random() - 0.5) * (GOAL_WIDTH - margin * 2);
+  let ty = 0.3 + Math.random() * (GOAL_HEIGHT - 0.5);
+
+  // Hard difficulty: sometimes aim for corners
+  if (difficulty === 'hard') {
+    const corner = Math.random();
+    if (corner < 0.4) {
+      tx = (Math.random() < 0.5 ? -1 : 1) * (GOAL_WIDTH / 2 - 0.3);
+      ty = GOAL_HEIGHT - 0.3;
+    }
+  }
+
+  // Add error for hard difficulty
+  if (difficulty === 'hard' && Math.random() < 0.05) {
+    // 5% chance of shooting wide
+    tx += (Math.random() < 0.5 ? -1 : 1) * (1 + Math.random() * 2);
+    ty += Math.random() * 2;
+  }
+
+  if (difficulty === 'easy' && Math.random() < 0.3) {
+    // Easy: often shoot near center
+    tx *= 0.3;
+    ty = 0.5 + Math.random() * 0.8;
+  }
+
+  aiShotTarget.set(tx, ty, GOAL_Z);
+  aiShotPower = 0.5 + Math.random() * 0.5;
+}
+
+function aiShoot() {
+  const ballPos = new THREE.Vector3(0, BALL_RADIUS, PENALTY_Z);
+  const dir = aiShotTarget.clone().sub(ballPos).normalize();
+  const speed = MIN_POWER + aiShotPower * (MAX_POWER - MIN_POWER) * 0.9;
+  const vel = dir.clone().multiplyScalar(speed);
+
+  ballBody.velocity.set(vel.x, vel.y, vel.z);
+  ballBody.angularVelocity.set((Math.random() - 0.5) * 20, (Math.random() - 0.5) * 20, (Math.random() - 0.5) * 10);
+
+  triggerCameraShake(0.15, 0.3);
+  gameState = STATE.AI_SHOOTING;
+  totalShotsAI++;
+}
+
+// ==================== GAME LOGIC ====================
+function checkGoalScored() {
+  const bp = ballBody.position;
+  const kp = keeperBody.position;
+
+  // Check if ball is very close to keeper + near goal line = save
+  const distToKeeper = Math.sqrt((bp.x - kp.x) ** 2 + (bp.y - kp.y) ** 2);
+  const nearGoalLine = Math.abs(bp.z - GOAL_Z) < 1.0;
+  const reachRadius = 1.4 + keeperDiveAmount * 1.2 + keeperJumpAmount * 0.8;
+
+  if (distToKeeper < reachRadius + 0.3 && nearGoalLine) {
+    const keeperBox = { minX: kp.x - 0.7, maxX: kp.x + 0.7, minY: kp.y - 0.7, maxY: kp.y + 1.1 };
+    const hitKeeper = bp.x > keeperBox.minX && bp.x < keeperBox.maxX &&
+                      bp.y > keeperBox.minY && bp.y < keeperBox.maxY;
+    if (distToKeeper < reachRadius || hitKeeper) {
+      return 'saved';
+    }
+  }
+
+  // Ball crossed goal line
+  if (bp.z < GOAL_Z && bp.z > GOAL_Z - GOAL_DEPTH - 0.5) {
+    if (Math.abs(bp.x) < GOAL_WIDTH / 2 && bp.y > 0 && bp.y < GOAL_HEIGHT) {
+      return 'goal';
+    }
+  }
+
+  // Ball went behind goal or out of bounds
+  if (bp.z < GOAL_Z - GOAL_DEPTH - 1 || bp.y < -3 || bp.z < GOAL_Z - 5 || Math.abs(bp.x) > GOAL_WIDTH / 2 + 3) {
+    return 'miss';
+  }
+  return null;
+}
+
+function showMessage(text, className) {
+  messageEl.textContent = text;
+  messageEl.className = 'show ' + className;
+  if (messageTimeout) clearTimeout(messageTimeout);
+  messageTimeout = setTimeout(() => {
+    messageEl.className = '';
+  }, 2000);
+}
+
+function handlePlayerResult(result) {
+  gameState = STATE.PLAYER_RESULT;
+  stateTimer = 1.5;
+
+  if (result === 'goal') {
+    scorePlayer++;
+    shotsOnTargetPlayer++;
+    animateScoreFlip(scorePlayerEl);
+    showMessage('进球！', 'goal');
+    spawnCelebration();
+  } else if (result === 'saved') {
+    shotsOnTargetPlayer++;
+    showMessage('扑出！', 'save');
+    // Bounce ball away
+    ballBody.velocity.z *= -0.3;
+    ballBody.velocity.x += (Math.random() - 0.5) * 8;
+    ballBody.velocity.y += 4;
+  } else {
+    showMessage('射偏！', 'miss');
+  }
+
+  updateScoreboard();
+}
+
+function handleAIResult(result) {
+  gameState = STATE.AI_RESULT;
+  stateTimer = 1.5;
+
+  if (result === 'goal') {
+    scoreAI++;
+    shotsOnTargetAI++;
+    animateScoreFlip(scoreAIEl);
+    showMessage('AI 进球！', 'goal');
+    spawnCelebration();
+  } else if (result === 'saved') {
+    shotsOnTargetAI++;
+    showMessage('你扑出了！', 'save');
+    ballBody.velocity.z *= -0.3;
+    ballBody.velocity.x += (Math.random() - 0.5) * 8;
+    ballBody.velocity.y += 4;
+  } else {
+    showMessage('AI 射偏！', 'miss');
+  }
+
+  updateScoreboard();
+}
+
+function updateScoreboard() {
+  scorePlayerEl.textContent = scorePlayer;
+  scoreAIEl.textContent = scoreAI;
+  statsPlayerEl.textContent = `射正 ${shotsOnTargetPlayer}/${totalShotsPlayer}`;
+  statsAIEl.textContent = `射正 ${shotsOnTargetAI}/${totalShotsAI}`;
+  roundTextEl.textContent = `${currentRound} / ${TOTAL_ROUNDS} · ${gameState.includes('ai') || gameState === STATE.AI_RESULT || gameState === STATE.AI_PREPARING || gameState === STATE.AI_SHOOTING ? 'AI 回合' : '你的回合'}`;
+}
+
+function animateScoreFlip(el) {
+  el.classList.add('flip');
+  setTimeout(() => {
+    el.textContent = el.textContent;
+    el.classList.remove('flip');
+  }, 300);
+}
+
+function resetBall() {
+  ballBody.position.set(0, BALL_RADIUS, PENALTY_Z);
+  ballBody.velocity.set(0, 0, 0);
+  ballBody.angularVelocity.set(0, 0, 0);
+  ballBody.force.set(0, 0, 0);
+  ballBody.torque.set(0, 0, 0);
+  ballMesh.position.copy(new THREE.Vector3(0, BALL_RADIUS, PENALTY_Z));
+  ballMesh.rotation.set(0, 0, 0);
+}
+
+function resetKeeper() {
+  keeperGroup.position.set(0, 0, GOAL_Z);
+  keeperGroup.rotation.set(0, 0, 0);
+  bodyGroup.rotation.set(0, 0, 0);
+  bodyGroup.position.set(0, 0, 0);
+  leftArm.rotation.set(0, 0, 0);
+  rightArm.rotation.set(0, 0, 0);
+  keeperTargetX = 0;
+  keeperDiveAmount = 0;
+  keeperDiveDir = 0;
+  keeperJumpAmount = 0;
+  keeperBody.position.set(0, 0.95, GOAL_Z);
+  keeperBody.velocity.set(0, 0, 0);
+}
+
+function restartGame() {
+  currentRound = 1;
+  scorePlayer = 0;
+  scoreAI = 0;
+  shotsOnTargetPlayer = 0;
+  shotsOnTargetAI = 0;
+  totalShotsPlayer = 0;
+  totalShotsAI = 0;
+  gameState = STATE.PLAYER_AIMING;
+  stateTimer = 0;
+  aimPower = 0;
+  powerBar.style.width = '0%';
+  powerBarWrap.classList.remove('active');
+  mouseDown = false;
+  trajLine.visible = false;
+  dotMeshes.forEach(d => d.visible = false);
+  instructionsEl.style.opacity = '1';
+  messageEl.className = '';
+
+  // Clear celebration particles
+  for (const p of celebrationParticles) {
+    particlesGroup.remove(p);
+    p.material.dispose();
+    p.geometry.dispose();
+  }
+  celebrationParticles.length = 0;
+
+  resetBall();
+  resetKeeper();
+  updateScoreboard();
+  roundTextEl.textContent = '1 / 5 · 你的回合';
+}
+
+// ==================== MAIN LOOP ====================
+const clock = new THREE.Clock();
+let lastBallInNet = false;
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  let dt = Math.min(clock.getDelta(), 0.1);
+
+  // Physics step
+  world.step(1 / 60, dt, 3);
+
+  // Sync ball mesh with physics body
+  ballMesh.position.copy(new THREE.Vector3(ballBody.position.x, ballBody.position.y, ballBody.position.z));
+  ballMesh.quaternion.copy(new THREE.Quaternion(ballBody.quaternion.x, ballBody.quaternion.y, ballBody.quaternion.z, ballBody.quaternion.w));
+
+  // Apply Magnus force to ball
+  if (gameState === STATE.PLAYER_SHOOTING || gameState === STATE.AI_SHOOTING) {
+    const v = ballBody.velocity;
+    const w = ballBody.angularVelocity;
+    const speed = Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+    if (speed > 0.5) {
+      const magnusForce = new CANNON.Vec3();
+      w.cross(v, magnusForce);
+      magnusForce.scale(MAGNUS_COEFF, magnusForce);
+      ballBody.applyForce(magnusForce, ballBody.position);
+    }
+  }
+
+  // Update net physics
+  const ballWorldPos = new THREE.Vector3(ballBody.position.x, ballBody.position.y, ballBody.position.z);
+  const ballInNetZone = ballBody.position.z < GOAL_Z && ballBody.position.z > GOAL_Z - GOAL_DEPTH - 1;
+  updateNetPhysics(dt, ballInNetZone ? ballWorldPos : null);
+
+  // Update celebration particles
+  updateCelebration(dt);
+
+  // Camera shake
+  if (shakeDuration > 0) {
+    shakeDuration -= dt;
+    const s = shakeIntensity * (shakeDuration / 0.4);
+    camera.position.x = cameraBase.x + (Math.random() - 0.5) * s * 2;
+    camera.position.y = cameraBase.y + (Math.random() - 0.5) * s * 2;
+    camera.position.z = cameraBase.z + (Math.random() - 0.5) * s;
+    if (shakeDuration <= 0) {
+      camera.position.copy(cameraBase);
+      shakeIntensity = 0;
+    }
+  }
+  camera.lookAt(cameraLookBase);
+
+  // ---- GAME STATE MACHINE ----
+  stateTimer -= dt;
+
+  switch (gameState) {
+    case STATE.PLAYER_AIMING:
+      // Waiting for player input
+      break;
+
+    case STATE.PLAYER_SHOOTING: {
+      shotTimer += dt;
+      // Ball is in flight; AI goalkeeper reacts after delay
+      if (stateTimer <= 0) {
+        // AI goalkeeper moves toward predicted cross point
+        const targetX = THREE.MathUtils.clamp(predictedCrossPoint.x, -GOAL_WIDTH / 2 + 0.5, GOAL_WIDTH / 2 - 0.5);
+        keeperTargetX = targetX;
+        keeperDiveDir = Math.sign(targetX - keeperGroup.position.x);
+        keeperDiveAmount = Math.min(1, keeperDiveAmount + dt * 6);
+      }
+
+      // Check result
+      const result = checkGoalScored();
+      if (result) {
+        handlePlayerResult(result);
+        shotTimer = 0;
+      } else if (shotTimer > 5) {
+        handlePlayerResult('miss');
+        shotTimer = 0;
+      }
+      break;
+    }
+
+    case STATE.PLAYER_RESULT:
+      if (stateTimer <= 0) {
+        // Transition to AI turn
+        resetBall();
+        resetKeeper();
+        gameState = STATE.TRANSITION_TO_AI;
+        stateTimer = 1.0;
+        aiShotDelay = difficulty === 'easy' ? 0.6 : difficulty === 'normal' ? 0.35 : 0.15;
+        aiChooseShotTarget();
+        updateScoreboard();
+        roundTextEl.textContent = `${currentRound} / ${TOTAL_ROUNDS} · AI 回合`;
+        instructionsEl.style.opacity = '1';
+        instructionsEl.textContent = 'A/D 移动守门员，空格起跳扑救';
+      }
+      break;
+
+    case STATE.TRANSITION_TO_AI:
+      if (stateTimer <= 0) {
+        gameState = STATE.AI_PREPARING;
+        stateTimer = aiShotDelay;
+      }
+      break;
+
+    case STATE.AI_PREPARING:
+      if (stateTimer <= 0) {
+        aiShoot();
+      }
+      break;
+
+    case STATE.AI_SHOOTING: {
+      shotTimer += dt;
+      const aiResult = checkGoalScored();
+      if (aiResult) {
+        handleAIResult(aiResult);
+        shotTimer = 0;
+      } else if (shotTimer > 5) {
+        handleAIResult('miss');
+        shotTimer = 0;
+      }
+      break;
+    }
+
+    case STATE.AI_RESULT:
+      if (stateTimer <= 0) {
+        if (currentRound >= TOTAL_ROUNDS) {
+          gameState = STATE.GAME_OVER;
+          const winner = scorePlayer > scoreAI ? '你赢了！' : scoreAI > scorePlayer ? 'AI 赢了！' : '平局！';
+          showMessage(winner, scorePlayer > scoreAI ? 'goal' : scoreAI > scorePlayer ? 'save' : 'miss');
+          instructionsEl.style.opacity = '1';
+          instructionsEl.textContent = '点击"重新开始"再来一局';
+        } else {
+          currentRound++;
+          resetBall();
+          resetKeeper();
+          gameState = STATE.PLAYER_AIMING;
+          updateScoreboard();
+          roundTextEl.textContent = `${currentRound} / ${TOTAL_ROUNDS} · 你的回合`;
+          instructionsEl.style.opacity = '1';
+          instructionsEl.textContent = '按住鼠标拖拽瞄准，松开射门';
+        }
+      }
+      break;
+
+    case STATE.GAME_OVER:
+      // Game finished, wait for restart
+      instructionsEl.style.opacity = '1';
+      instructionsEl.textContent = '点击"重新开始"再来一局';
+      break;
+  }
+
+  // ---- UPDATE GOALKEEPER ----
+  updateKeeper(dt);
+
+  // ---- BALL OUT OF BOUNDS RECOVERY ----
+  const bp = ballBody.position;
+  if (bp.y < -5 || bp.z < GOAL_Z - 10 || Math.abs(bp.x) > 20) {
+    // Ball went way out, recover it
+    if (gameState === STATE.PLAYER_SHOOTING) {
+      handlePlayerResult('miss');
+    } else if (gameState === STATE.AI_SHOOTING) {
+      handleAIResult('miss');
+    }
+  }
+
+  // ---- RENDER ----
+  renderer.render(scene, camera);
+}
+
+function updateKeeper(dt) {
+  // Move keeper toward target
+  const currentX = keeperGroup.position.x;
+
+  if (gameState === STATE.AI_PREPARING || gameState === STATE.AI_SHOOTING || gameState === STATE.AI_RESULT) {
+    // Player controls keeper
+    let moveDir = 0;
+    if (keys['a'] || keys['arrowleft']) moveDir = -1;
+    if (keys['d'] || keys['arrowright']) moveDir += 1;
+
+    // Jump
+    if ((keys[' '] || keys['space'] || keys['w'] || keys['arrowup']) && keeperJumpAmount < 0.01) {
+      keeperJumpAmount = 1;
+      keeperDiveAmount = 1;
+      keeperDiveDir = moveDir !== 0 ? moveDir : (Math.random() < 0.5 ? -1 : 1);
+    }
+
+    const newX = currentX + moveDir * playerKeeperSpeed * dt;
+    keeperGroup.position.x = THREE.MathUtils.clamp(newX, -GOAL_WIDTH / 2 + 0.3, GOAL_WIDTH / 2 - 0.3);
+    keeperTargetX = keeperGroup.position.x;
+
+    // Decay jump
+    if (keeperJumpAmount > 0.01) {
+      keeperJumpAmount = Math.max(0, keeperJumpAmount - dt * 2.5);
+      keeperDiveAmount = Math.max(0, keeperDiveAmount - dt * 2.5);
+    }
+  } else {
+    // AI controls keeper - move to target
+    if (stateTimer <= 0 || gameState === STATE.PLAYER_SHOOTING) {
+      const dx = keeperTargetX - currentX;
+      const moveSpeed = 5;
+      if (Math.abs(dx) < 0.05) {
+        keeperGroup.position.x = keeperTargetX;
+      } else {
+        keeperGroup.position.x += Math.sign(dx) * Math.min(Math.abs(dx), moveSpeed * dt);
+      }
+    }
+
+    // Decay dive after player's shot
+    if (gameState === STATE.PLAYER_RESULT || gameState === STATE.PLAYER_AIMING || gameState === STATE.TRANSITION_TO_AI) {
+      keeperDiveAmount = Math.max(0, keeperDiveAmount - dt * 3);
+      keeperJumpAmount = Math.max(0, keeperJumpAmount - dt * 3);
+    }
+  }
+
+  // Clamp to goal area
+  keeperGroup.position.x = THREE.MathUtils.clamp(keeperGroup.position.x, -GOAL_WIDTH / 2 + 0.3, GOAL_WIDTH / 2 - 0.3);
+
+  // Animate keeper body
+  // Dive rotation
+  const diveAngle = keeperDiveAmount * keeperDiveDir * 0.8;
+  bodyGroup.rotation.z = THREE.MathUtils.lerp(bodyGroup.rotation.z, diveAngle, 8 * dt);
+  bodyGroup.rotation.x = THREE.MathUtils.lerp(bodyGroup.rotation.x, keeperJumpAmount * 0.3, 8 * dt);
+  bodyGroup.position.y = keeperJumpAmount * 0.6;
+
+  // Arms extend during dive
+  const diveArmTarget = keeperDiveAmount * 1.2 * keeperDiveDir;
+  leftArm.rotation.z = THREE.MathUtils.lerp(leftArm.rotation.z, diveArmTarget, 10 * dt);
+  rightArm.rotation.z = THREE.MathUtils.lerp(rightArm.rotation.z, diveArmTarget, 10 * dt);
+  leftArm.rotation.x = THREE.MathUtils.lerp(leftArm.rotation.x, -keeperDiveAmount * 0.6, 10 * dt);
+  rightArm.rotation.x = THREE.MathUtils.lerp(rightArm.rotation.x, -keeperDiveAmount * 0.6, 10 * dt);
+
+  // Legs spread during dive
+  const legSpreadTarget = keeperDiveAmount * 0.4;
+  leftLeg.rotation.z = THREE.MathUtils.lerp(leftLeg.rotation.z, legSpreadTarget * keeperDiveDir, 8 * dt);
+  rightLeg.rotation.z = THREE.MathUtils.lerp(rightLeg.rotation.z, legSpreadTarget * keeperDiveDir, 8 * dt);
+
+  // Update kinematic body to match visual
+  keeperBody.position.x = keeperGroup.position.x;
+  keeperBody.position.y = 0.95 + bodyGroup.position.y;
+}
+
+// Start the game
+resetKeeper();
+roundTextEl.textContent = '1 / 5 · 你的回合';
+updateScoreboard();
+
+// Expose start
+animate();
+
+console.log('⚽ 3D 点球大战已就绪');
+console.log('  鼠标拖拽瞄准射门 | A/D 移动守门员 | 空格起跳扑救');
+console.log('  难度:', difficulty);
+</script>
+</body>
+</html>

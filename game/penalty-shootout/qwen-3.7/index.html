@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D点球大战</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            overflow: hidden;
+            font-family: 'Arial', sans-serif;
+            background: #000;
+        }
+        #canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        #scoreboard {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #ffd700;
+            border-radius: 8px;
+            padding: 15px 20px;
+            color: #fff;
+            font-size: 16px;
+            min-width: 200px;
+        }
+        #scoreboard h3 {
+            color: #ffd700;
+            margin-bottom: 10px;
+            font-size: 14px;
+            text-align: center;
+        }
+        .score-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+        .score-row.player {
+            color: #4fc3f7;
+        }
+        .score-row.ai {
+            color: #ff7043;
+        }
+        #round-info {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #444;
+            font-size: 14px;
+            text-align: center;
+            color: #aaa;
+        }
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 20px;
+            padding: 10px 30px;
+            color: #fff;
+            font-size: 18px;
+            text-align: center;
+        }
+        #power-bar {
+            position: absolute;
+            right: 30px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 30px;
+            height: 200px;
+            background: rgba(0, 0, 0, 0.5);
+            border: 2px solid #fff;
+            border-radius: 15px;
+            overflow: hidden;
+        }
+        #power-fill {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background: linear-gradient(to top, #4caf50, #ffeb3b, #f44336);
+            transition: height 0.1s;
+        }
+        #controls-hint {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 10px;
+            padding: 10px 20px;
+            color: #fff;
+            font-size: 14px;
+            text-align: center;
+        }
+        #difficulty-select {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 2px solid #ffd700;
+            border-radius: 8px;
+            padding: 10px 15px;
+            color: #fff;
+            pointer-events: auto;
+        }
+        #difficulty-select select {
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+            border-radius: 4px;
+            padding: 5px 10px;
+            font-size: 14px;
+        }
+        #result-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            color: #fff;
+        }
+        #result-screen.show {
+            display: flex;
+        }
+        #result-screen h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #ffd700;
+        }
+        #result-screen .final-score {
+            font-size: 36px;
+            margin-bottom: 30px;
+        }
+        #restart-btn {
+            background: #ffd700;
+            color: #000;
+            border: none;
+            padding: 15px 40px;
+            font-size: 18px;
+            border-radius: 30px;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: transform 0.2s;
+        }
+        #restart-btn:hover {
+            transform: scale(1.1);
+        }
+        .shot-history {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .shot-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }
+        .shot-dot.goal {
+            background: #4caf50;
+        }
+        .shot-dot.miss {
+            background: #f44336;
+        }
+        .shot-dot.pending {
+            background: #666;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    <div id="ui">
+        <div id="scoreboard">
+            <h3>比分</h3>
+            <div class="score-row player">
+                <span>玩家</span>
+                <span id="player-score">0</span>
+            </div>
+            <div class="shot-history" id="player-history"></div>
+            <div class="score-row ai">
+                <span>AI</span>
+                <span id="ai-score">0</span>
+            </div>
+            <div class="shot-history" id="ai-history"></div>
+            <div id="round-info">第 1 轮 / 共 5 轮</div>
+        </div>
+        <div id="status">准备开始</div>
+        <div id="power-bar">
+            <div id="power-fill"></div>
+        </div>
+        <div id="difficulty-select">
+            <label>难度: </label>
+            <select id="difficulty">
+                <option value="easy">简单</option>
+                <option value="normal" selected>普通</option>
+                <option value="hard">困难</option>
+            </select>
+        </div>
+        <div id="controls-hint">拖拽鼠标瞄准，松开射门</div>
+        <div id="result-screen">
+            <h1 id="result-title">游戏结束</h1>
+            <div class="final-score" id="final-score">0 - 0</div>
+            <button id="restart-btn">重新开始</button>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <script>
+        // 游戏配置
+        const CONFIG = {
+            goalWidth: 7.32,
+            goalHeight: 2.44,
+            goalDepth: 2,
+            penaltyDistance: 11,
+            ballRadius: 0.11,
+            ballMass: 0.43,
+            gravity: -9.82,
+            maxPower: 35,
+            minPower: 15,
+            magnusCoefficient: 0.000015,
+            aiDifficulty: {
+                easy: { delay: 0.3, errorRate: 0.2 },
+                normal: { delay: 0.15, errorRate: 0.1 },
+                hard: { delay: 0.05, errorRate: 0.05 }
+            }
+        };
+
+        // 游戏状态
+        let gameState = {
+            currentRound: 1,
+            phase: 'idle', // idle, aiming, shooting, result, ai_shooting, player_saving, ai_result
+            playerScore: 0,
+            aiScore: 0,
+            playerShots: [],
+            aiShots: [],
+            isPlayerTurn: true, // true=玩家射门, false=AI射门
+            difficulty: 'normal'
+        };
+
+        // Three.js 变量
+        let scene, camera, renderer;
+        let ball, goalkeeper, goalNet;
+        let aimLine, trajectoryPoints = [];
+        let particles = [];
+
+        // Cannon.js 变量
+        let world, ballBody, groundBody;
+        let ballVelocity = new CANNON.Vec3();
+        let ballAngularVelocity = new CANNON.Vec3();
+
+        // 输入变量
+        let isDragging = false;
+        let dragStart = { x: 0, y: 0 };
+        let dragCurrent = { x: 0, y: 0 };
+        let mousePos = { x: 0, y: 0 };
+
+        // 动画变量
+        let cameraShake = { x: 0, y: 0, intensity: 0 };
+        let netDeformation = [];
+        let goalkeeperTarget = { x: 0, y: 0 };
+        let goalkeeperVelocity = { x: 0, y: 0 };
+        let isJumping = false;
+        let jumpVelocity = 0;
+
+        // 初始化
+        function init() {
+            initThree();
+            initCannon();
+            initScene();
+            initEvents();
+            updateUI();
+            animate();
+        }
+
+        // 初始化Three.js
+        function initThree() {
+            const canvas = document.getElementById('canvas');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.Fog(0x87ceeb, 50, 100);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 3, 15);
+            camera.lookAt(0, 1, 0);
+
+            renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // 光照
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            directionalLight.position.set(10, 20, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            directionalLight.shadow.camera.left = -15;
+            directionalLight.shadow.camera.right = 15;
+            directionalLight.shadow.camera.top = 15;
+            directionalLight.shadow.camera.bottom = -15;
+            scene.add(directionalLight);
+
+            window.addEventListener('resize', onWindowResize);
+        }
+
+        // 初始化Cannon.js
+        function initCannon() {
+            world = new CANNON.World();
+            world.gravity.set(0, CONFIG.gravity, 0);
+            world.broadphase = new CANNON.NaiveBroadphase();
+            world.solver.iterations = 10;
+
+            // 地面
+            const groundShape = new CANNON.Plane();
+            groundBody = new CANNON.Body({ mass: 0 });
+            groundBody.addShape(groundShape);
+            groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+            groundBody.position.set(0, 0, 0);
+            world.addBody(groundBody);
+        }
+
+        // 初始化场景
+        function initScene() {
+            // 草地
+            const grassGeometry = new THREE.PlaneGeometry(100, 100);
+            const grassMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x2d5016,
+                roughness: 0.8
+            });
+            const grass = new THREE.Mesh(grassGeometry, grassMaterial);
+            grass.rotation.x = -Math.PI / 2;
+            grass.receiveShadow = true;
+            scene.add(grass);
+
+            // 草地纹理线条
+            for (let i = -20; i <= 20; i += 2) {
+                const lineGeometry = new THREE.PlaneGeometry(0.1, 40);
+                const lineMaterial = new THREE.MeshBasicMaterial({ color: 0x3d6026 });
+                const line = new THREE.Mesh(lineGeometry, lineMaterial);
+                line.rotation.x = -Math.PI / 2;
+                line.position.set(i, 0.01, 0);
+                scene.add(line);
+            }
+
+            // 球门
+            createGoal();
+
+            // 足球
+            createBall();
+
+            // 守门员
+            createGoalkeeper();
+
+            // 看台和观众
+            createStands();
+
+            // 瞄准线
+            createAimLine();
+        }
+
+        // 创建球门
+        function createGoal() {
+            const goalGroup = new THREE.Group();
+            const postMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 0.3, roughness: 0.5 });
+            const postRadius = 0.06;
+
+            // 左门柱
+            const leftPostGeometry = new THREE.CylinderGeometry(postRadius, postRadius, CONFIG.goalHeight, 16);
+            const leftPost = new THREE.Mesh(leftPostGeometry, postMaterial);
+            leftPost.position.set(-CONFIG.goalWidth / 2, CONFIG.goalHeight / 2, 0);
+            leftPost.castShadow = true;
+            goalGroup.add(leftPost);
+
+            // 右门柱
+            const rightPost = new THREE.Mesh(leftPostGeometry, postMaterial);
+            rightPost.position.set(CONFIG.goalWidth / 2, CONFIG.goalHeight / 2, 0);
+            rightPost.castShadow = true;
+            goalGroup.add(rightPost);
+
+            // 横梁
+            const crossbarGeometry = new THREE.CylinderGeometry(postRadius, postRadius, CONFIG.goalWidth, 16);
+            const crossbar = new THREE.Mesh(crossbarGeometry, postMaterial);
+            crossbar.rotation.z = Math.PI / 2;
+            crossbar.position.set(0, CONFIG.goalHeight, 0);
+            crossbar.castShadow = true;
+            goalGroup.add(crossbar);
+
+            // 球网
+            createGoalNet(goalGroup);
+
+            scene.add(goalGroup);
+        }
+
+        // 创建球网
+        function createGoalNet(parent) {
+            const netWidth = CONFIG.goalWidth;
+            const netHeight = CONFIG.goalHeight;
+            const netDepth = CONFIG.goalDepth;
+            const segments = 20;
+
+            // 背面网
+            const backNetGeometry = new THREE.PlaneGeometry(netWidth, netHeight, segments, segments);
+            const netMaterial = new THREE.MeshBasicMaterial({ 
+                color: 0xffffff, 
+                wireframe: true,
+                transparent: true,
+                opacity: 0.6
+            });
+            const backNet = new THREE.Mesh(backNetGeometry, netMaterial);
+            backNet.position.set(0, netHeight / 2, -netDepth);
+            scene.add(backNet);
+            goalNet = backNet;
+
+            // 初始化网变形数据
+            const positions = backNetGeometry.attributes.position;
+            for (let i = 0; i < positions.count; i++) {
+                netDeformation.push({
+                    originalX: positions.getX(i),
+                    originalY: positions.getY(i),
+                    originalZ: positions.getZ(i),
+                    velocityX: 0,
+                    velocityY: 0,
+                    velocityZ: 0
+                });
+            }
+
+            // 侧面网
+            const sideNetGeometry = new THREE.PlaneGeometry(netDepth, netHeight, 10, segments);
+            const leftNet = new THREE.Mesh(sideNetGeometry, netMaterial);
+            leftNet.rotation.y = Math.PI / 2;
+            leftNet.position.set(-netWidth / 2, netHeight / 2, -netDepth / 2);
+            scene.add(leftNet);
+
+            const rightNet = new THREE.Mesh(sideNetGeometry, netMaterial);
+            rightNet.rotation.y = -Math.PI / 2;
+            rightNet.position.set(netWidth / 2, netHeight / 2, -netDepth / 2);
+            scene.add(rightNet);
+
+            // 顶部网
+            const topNetGeometry = new THREE.PlaneGeometry(netWidth, netDepth, segments, 10);
+            const topNet = new THREE.Mesh(topNetGeometry, netMaterial);
+            topNet.rotation.x = Math.PI / 2;
+            topNet.position.set(0, netHeight, -netDepth / 2);
+            scene.add(topNet);
+        }
+
+        // 创建足球
+        function createBall() {
+            const ballGeometry = new THREE.SphereGeometry(CONFIG.ballRadius, 32, 32);
+            
+            // 创建足球纹理
+            const canvas = document.createElement('canvas');
+            canvas.width = 256;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            // 白色底色
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, 256, 256);
+            
+            // 黑色五边形
+            ctx.fillStyle = '#000000';
+            const drawPentagon = (cx, cy, size) => {
+                ctx.beginPath();
+                for (let i = 0; i < 5; i++) {
+                    const angle = (i * 4 * Math.PI / 5) - Math.PI / 2;
+                    const x = cx + size * Math.cos(angle);
+                    const y = cy + size * Math.sin(angle);
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.closePath();
+                ctx.fill();
+            };
+            
+            // 绘制多个五边形
+            drawPentagon(128, 128, 30);
+            drawPentagon(64, 64, 20);
+            drawPentagon(192, 64, 20);
+            drawPentagon(64, 192, 20);
+            drawPentagon(192, 192, 20);
+            drawPentagon(128, 32, 15);
+            drawPentagon(128, 224, 15);
+            drawPentagon(32, 128, 15);
+            drawPentagon(224, 128, 15);
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            
+            const ballMaterial = new THREE.MeshStandardMaterial({ 
+                map: texture,
+                roughness: 0.4,
+                metalness: 0.1
+            });
+            
+            ball = new THREE.Mesh(ballGeometry, ballMaterial);
+            ball.castShadow = true;
+            ball.position.set(0, CONFIG.ballRadius, CONFIG.penaltyDistance);
+            scene.add(ball);
+
+            // 物理球体
+            const ballShape = new CANNON.Sphere(CONFIG.ballRadius);
+            ballBody = new CANNON.Body({ mass: CONFIG.ballMass });
+            ballBody.addShape(ballShape);
+            ballBody.position.set(0, CONFIG.ballRadius, CONFIG.penaltyDistance);
+            ballBody.linearDamping = 0.1;
+            ballBody.angularDamping = 0.1;
+            world.addBody(ballBody);
+        }
+
+        // 创建守门员
+        function createGoalkeeper() {
+            goalkeeper = new THREE.Group();
+            
+            // 身体
+            const bodyGeometry = new THREE.CylinderGeometry(0.2, 0.25, 0.8, 16);
+            const bodyMaterial = new THREE.MeshStandardMaterial({ color: 0xff6600 });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 0.9;
+            body.castShadow = true;
+            goalkeeper.add(body);
+
+            // 头部
+            const headGeometry = new THREE.SphereGeometry(0.15, 16, 16);
+            const headMaterial = new THREE.MeshStandardMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 1.45;
+            head.castShadow = true;
+            goalkeeper.add(head);
+
+            // 手臂
+            const armGeometry = new THREE.CylinderGeometry(0.06, 0.06, 0.5, 8);
+            const armMaterial = new THREE.MeshStandardMaterial({ color: 0xff6600 });
+            
+            const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+            leftArm.position.set(-0.3, 1.0, 0);
+            leftArm.rotation.z = Math.PI / 6;
+            leftArm.castShadow = true;
+            goalkeeper.add(leftArm);
+            goalkeeper.leftArm = leftArm;
+
+            const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+            rightArm.position.set(0.3, 1.0, 0);
+            rightArm.rotation.z = -Math.PI / 6;
+            rightArm.castShadow = true;
+            goalkeeper.add(rightArm);
+            goalkeeper.rightArm = rightArm;
+
+            // 腿
+            const legGeometry = new THREE.CylinderGeometry(0.08, 0.08, 0.6, 8);
+            const legMaterial = new THREE.MeshStandardMaterial({ color: 0x333333 });
+            
+            const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+            leftLeg.position.set(-0.12, 0.3, 0);
+            leftLeg.castShadow = true;
+            goalkeeper.add(leftLeg);
+
+            const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+            rightLeg.position.set(0.12, 0.3, 0);
+            rightLeg.castShadow = true;
+            goalkeeper.add(rightLeg);
+
+            goalkeeper.position.set(0, 0, 0.2);
+            scene.add(goalkeeper);
+        }
+
+        // 创建看台
+        function createStands() {
+            // 后方看台
+            const standGeometry = new THREE.BoxGeometry(30, 8, 5);
+            const standMaterial = new THREE.MeshStandardMaterial({ color: 0x444444 });
+            const stand = new THREE.Mesh(standGeometry, standMaterial);
+            stand.position.set(0, 4, -15);
+            scene.add(stand);
+
+            // 观众剪影
+            const silhouetteMaterial = new THREE.MeshBasicMaterial({ color: 0x222222 });
+            for (let i = 0; i < 50; i++) {
+                const silhouetteGeometry = new THREE.CylinderGeometry(0.2, 0.3, 1.2, 8);
+                const silhouette = new THREE.Mesh(silhouetteGeometry, silhouetteMaterial);
+                silhouette.position.set(
+                    (Math.random() - 0.5) * 28,
+                    5 + Math.random() * 3,
+                    -14 + Math.random() * 2
+                );
+                scene.add(silhouette);
+            }
+
+            // 侧面看台
+            const sideStandGeometry = new THREE.BoxGeometry(5, 6, 20);
+            const leftStand = new THREE.Mesh(sideStandGeometry, standMaterial);
+            leftStand.position.set(-18, 3, -5);
+            scene.add(leftStand);
+
+            const rightStand = new THREE.Mesh(sideStandGeometry, standMaterial);
+            rightStand.position.set(18, 3, -5);
+            scene.add(rightStand);
+        }
+
+        // 创建瞄准线
+        function createAimLine() {
+            const material = new THREE.LineDashedMaterial({ 
+                color: 0xffff00, 
+                dashSize: 0.2, 
+                gapSize: 0.1,
+                linewidth: 2
+            });
+            const geometry = new THREE.BufferGeometry();
+            aimLine = new THREE.Line(geometry, material);
+            aimLine.visible = false;
+            scene.add(aimLine);
+        }
+
+        // 窗口大小调整
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // 事件处理
+        function initEvents() {
+            const canvas = document.getElementById('canvas');
+            
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('mouseup', onMouseUp);
+            
+            document.addEventListener('keydown', onKeyDown);
+            document.addEventListener('keyup', onKeyUp);
+            
+            document.getElementById('difficulty').addEventListener('change', (e) => {
+                gameState.difficulty = e.target.value;
+            });
+            
+            document.getElementById('restart-btn').addEventListener('click', restartGame);
+        }
+
+        function onMouseDown(e) {
+            if (gameState.phase === 'idle' && gameState.isPlayerTurn) {
+                gameState.phase = 'aiming';
+                isDragging = true;
+                dragStart.x = e.clientX;
+                dragStart.y = e.clientY;
+                dragCurrent.x = e.clientX;
+                dragCurrent.y = e.clientY;
+                document.getElementById('controls-hint').textContent = '拖拽调整方向和力量，松开射门';
+            }
+        }
+
+        function onMouseMove(e) {
+            mousePos.x = (e.clientX / window.innerWidth) * 2 - 1;
+            mousePos.y = -(e.clientY / window.innerHeight) * 2 + 1;
+            
+            if (isDragging && gameState.phase === 'aiming') {
+                dragCurrent.x = e.clientX;
+                dragCurrent.y = e.clientY;
+                updateAimLine();
+                updatePowerBar();
+            }
+        }
+
+        function onMouseUp(e) {
+            if (isDragging && gameState.phase === 'aiming') {
+                isDragging = false;
+                shoot();
+            }
+        }
+
+        let keysPressed = {};
+        function onKeyDown(e) {
+            keysPressed[e.key] = true;
+            
+            if (gameState.phase === 'player_saving') {
+                if (e.key === 'ArrowUp' && !isJumping) {
+                    isJumping = true;
+                    jumpVelocity = 8;
+                }
+            }
+        }
+
+        function onKeyUp(e) {
+            keysPressed[e.key] = false;
+        }
+
+        // 更新瞄准线
+        function updateAimLine() {
+            const dx = dragStart.x - dragCurrent.x;
+            const dy = dragStart.y - dragCurrent.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // 计算射门方向和力量
+            const power = Math.min(distance / 200, 1);
+            const angleX = dx / 200;
+            const angleY = dy / 200;
+            
+            // 目标位置
+            const targetX = angleX * CONFIG.goalWidth * 0.6;
+            const targetY = Math.max(0.5, angleY * CONFIG.goalHeight * 1.5);
+            const targetZ = 0;
+            
+            // 生成轨迹点
+            trajectoryPoints = [];
+            const startPos = ball.position.clone();
+            const steps = 30;
+            
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                const x = startPos.x + (targetX - startPos.x) * t;
+                const y = startPos.y + (targetY - startPos.y) * t - 0.5 * 9.82 * Math.pow(t * 0.8, 2);
+                const z = startPos.z + (targetZ - startPos.z) * t;
+                trajectoryPoints.push(new THREE.Vector3(x, Math.max(0.1, y), z));
+            }
+            
+            // 更新瞄准线
+            const positions = new Float32Array(trajectoryPoints.length * 3);
+            trajectoryPoints.forEach((p, i) => {
+                positions[i * 3] = p.x;
+                positions[i * 3 + 1] = p.y;
+                positions[i * 3 + 2] = p.z;
+            });
+            
+            aimLine.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            aimLine.computeLineDistances();
+            aimLine.visible = true;
+        }
+
+        // 更新力量条
+        function updatePowerBar() {
+            const dx = dragStart.x - dragCurrent.x;
+            const dy = dragStart.y - dragCurrent.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const power = Math.min(distance / 200, 1);
+            document.getElementById('power-fill').style.height = (power * 100) + '%';
+        }
+
+        // 射门
+        function shoot() {
+            const dx = dragStart.x - dragCurrent.x;
+            const dy = dragStart.y - dragCurrent.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distance < 10) {
+                gameState.phase = 'idle';
+                aimLine.visible = false;
+                document.getElementById('power-fill').style.height = '0%';
+                return;
+            }
+            
+            const power = Math.min(distance / 200, 1);
+            const speed = CONFIG.minPower + power * (CONFIG.maxPower - CONFIG.minPower);
+            
+            // 计算方向
+            const angleX = dx / 200;
+            const angleY = dy / 200;
+            
+            const targetX = angleX * CONFIG.goalWidth * 0.6;
+            const targetY = Math.max(0.5, angleY * CONFIG.goalHeight * 1.5);
+            
+            const dirX = targetX - ball.position.x;
+            const dirY = targetY - ball.position.y;
+            const dirZ = 0 - ball.position.z;
+            const dirLength = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+            
+            ballVelocity.set(
+                (dirX / dirLength) * speed,
+                (dirY / dirLength) * speed,
+                (dirZ / dirLength) * speed
+            );
+            
+            // 添加旋转（马格努斯效应）
+            ballAngularVelocity.set(
+                (Math.random() - 0.5) * 20,
+                angleX * 30,
+                (Math.random() - 0.5) * 10
+            );
+            
+            ballBody.velocity.copy(ballVelocity);
+            ballBody.angularVelocity.copy(ballAngularVelocity);
+            
+            gameState.phase = 'shooting';
+            aimLine.visible = false;
+            document.getElementById('power-fill').style.height = '0%';
+            document.getElementById('controls-hint').textContent = '';
+            
+            // 镜头震动
+            cameraShake.intensity = power * 0.3;
+            
+            // AI扑救
+            setTimeout(() => {
+                aiGoalkeeperSave(targetX, targetY);
+            }, CONFIG.aiDifficulty[gameState.difficulty].delay * 1000);
+        }
+
+        // AI守门员扑救
+        function aiGoalkeeperSave(targetX, targetY) {
+            const difficulty = CONFIG.aiDifficulty[gameState.difficulty];
+            const errorRate = difficulty.errorRate;
+            
+            // 判断是否失误
+            const isError = Math.random() < errorRate;
+            
+            if (!isError) {
+                // 正确判断方向
+                goalkeeperTarget.x = targetX > 0 ? 2 : -2;
+            } else {
+                // 错误判断
+                goalkeeperTarget.x = targetX > 0 ? -2 : 2;
+            }
+            
+            // 判断高度
+            if (targetY > CONFIG.goalHeight * 0.6) {
+                goalkeeperTarget.y = 1.5;
+            } else {
+                goalkeeperTarget.y = 0;
+            }
+        }
+
+        // AI射门
+        function aiShoot() {
+            gameState.phase = 'ai_shooting';
+            document.getElementById('status').textContent = 'AI射门中...';
+            document.getElementById('controls-hint').textContent = '← → 移动守门员 ↑ 起跳扑救';
+            
+            setTimeout(() => {
+                // AI选择射门方向
+                const targets = [
+                    { x: -2.5, y: 1.8 }, // 左上
+                    { x: 2.5, y: 1.8 },  // 右上
+                    { x: -2.5, y: 0.8 }, // 左下
+                    { x: 2.5, y: 0.8 },  // 右下
+                    { x: 0, y: 1.2 }     // 中路
+                ];
+                
+                const target = targets[Math.floor(Math.random() * targets.length)];
+                const power = 0.7 + Math.random() * 0.3;
+                const speed = CONFIG.minPower + power * (CONFIG.maxPower - CONFIG.minPower);
+                
+                const dirX = target.x - ball.position.x;
+                const dirY = target.y - ball.position.y;
+                const dirZ = 0 - ball.position.z;
+                const dirLength = Math.sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+                
+                ballVelocity.set(
+                    (dirX / dirLength) * speed,
+                    (dirY / dirLength) * speed,
+                    (dirZ / dirLength) * speed
+                );
+                
+                ballAngularVelocity.set(
+                    (Math.random() - 0.5) * 20,
+                    (Math.random() - 0.5) * 30,
+                    (Math.random() - 0.5) * 10
+                );
+                
+                ballBody.velocity.copy(ballVelocity);
+                ballBody.angularVelocity.copy(ballAngularVelocity);
+                
+                cameraShake.intensity = power * 0.2;
+            }, 1000);
+        }
+
+        // 重置球位置
+        function resetBall() {
+            ballBody.position.set(0, CONFIG.ballRadius, CONFIG.penaltyDistance);
+            ballBody.velocity.set(0, 0, 0);
+            ballBody.angularVelocity.set(0, 0, 0);
+            ball.position.copy(ballBody.position);
+        }
+
+        // 检查进球
+        function checkGoal() {
+            const ballPos = ball.position;
+            
+            // 检查是否进入球门范围
+            if (ballPos.z <= 0.5 && ballPos.z >= -CONFIG.goalDepth) {
+                if (Math.abs(ballPos.x) < CONFIG.goalWidth / 2 && 
+                    ballPos.y < CONFIG.goalHeight && 
+                    ballPos.y > 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // 检查扑救
+        function checkSave() {
+            const ballPos = ball.position;
+            const keeperPos = goalkeeper.position;
+            
+            const dx = ballPos.x - keeperPos.x;
+            const dy = ballPos.y - (keeperPos.y + 1);
+            const dz = ballPos.z - keeperPos.z;
+            
+            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            return distance < 0.8;
+        }
+
+        // 进球效果
+        function goalEffect() {
+            // 球网变形
+            deformNet(ball.position.x, ball.position.y);
+            
+            // 粒子效果
+            createParticles();
+            
+            // 更新比分
+            if (gameState.isPlayerTurn) {
+                gameState.playerScore++;
+                gameState.playerShots.push({ round: gameState.currentRound, result: 'goal' });
+            } else {
+                gameState.aiScore++;
+                gameState.aiShots.push({ round: gameState.currentRound, result: 'goal' });
+            }
+            
+            updateUI();
+            showResult('进球!');
+        }
+
+        // 扑救效果
+        function saveEffect() {
+            if (gameState.isPlayerTurn) {
+                gameState.playerShots.push({ round: gameState.currentRound, result: 'miss' });
+            } else {
+                gameState.aiShots.push({ round: gameState.currentRound, result: 'miss' });
+            }
+            
+            updateUI();
+            showResult('扑出!');
+        }
+
+        // 球网变形
+        function deformNet(hitX, hitY) {
+            if (!goalNet) return;
+            
+            const positions = goalNet.geometry.attributes.position;
+            const hitLocalX = hitX;
+            const hitLocalY = hitY - CONFIG.goalHeight / 2;
+            
+            for (let i = 0; i < positions.count; i++) {
+                const x = positions.getX(i);
+                const y = positions.getY(i);
+                
+                const dx = x - hitLocalX;
+                const dy = y - hitLocalY;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+                
+                if (distance < 1.5) {
+                    const force = (1.5 - distance) * 0.5;
+                    netDeformation[i].velocityZ = -force * 5;
+                    netDeformation[i].velocityX = dx * force;
+                    netDeformation[i].velocityY = dy * force;
+                }
+            }
+        }
+
+        // 创建粒子
+        function createParticles() {
+            const particleCount = 100;
+            const colors = [0xff0000, 0x00ff00, 0x0000ff, 0xffff00, 0xff00ff, 0x00ffff];
+            
+            for (let i = 0; i < particleCount; i++) {
+                const geometry = new THREE.SphereGeometry(0.1, 8, 8);
+                const material = new THREE.MeshBasicMaterial({ 
+                    color: colors[Math.floor(Math.random() * colors.length)]
+                });
+                const particle = new THREE.Mesh(geometry, material);
+                
+                particle.position.set(
+                    (Math.random() - 0.5) * 20,
+                    5 + Math.random() * 5,
+                    -12 + Math.random() * 3
+                );
+                
+                particle.userData = {
+                    velocity: new THREE.Vector3(
+                        (Math.random() - 0.5) * 0.3,
+                        Math.random() * 0.2 + 0.1,
+                        (Math.random() - 0.5) * 0.2
+                    ),
+                    life: 1
+                };
+                
+                scene.add(particle);
+                particles.push(particle);
+            }
+        }
+
+        // 显示结果
+        function showResult(text) {
+            document.getElementById('status').textContent = text;
+            
+            setTimeout(() => {
+                nextRound();
+            }, 2000);
+        }
+
+        // 下一轮
+        function nextRound() {
+            resetBall();
+            resetGoalkeeper();
+            
+            if (gameState.isPlayerTurn) {
+                // 玩家射完，换AI射
+                gameState.isPlayerTurn = false;
+                gameState.phase = 'ai_shooting';
+                setTimeout(() => aiShoot(), 1000);
+            } else {
+                // AI射完，换玩家射，进入下一轮
+                gameState.isPlayerTurn = true;
+                gameState.currentRound++;
+                
+                if (gameState.currentRound > 5) {
+                    endGame();
+                } else {
+                    gameState.phase = 'idle';
+                    document.getElementById('status').textContent = `第 ${gameState.currentRound} 轮 - 你的回合`;
+                    document.getElementById('controls-hint').textContent = '拖拽鼠标瞄准，松开射门';
+                }
+            }
+            
+            updateUI();
+        }
+
+        // 重置守门员
+        function resetGoalkeeper() {
+            goalkeeper.position.set(0, 0, 0.2);
+            goalkeeper.rotation.set(0, 0, 0);
+            goalkeeperTarget.x = 0;
+            goalkeeperTarget.y = 0;
+            isJumping = false;
+            jumpVelocity = 0;
+        }
+
+        // 结束游戏
+        function endGame() {
+            gameState.phase = 'ended';
+            
+            const resultScreen = document.getElementById('result-screen');
+            const resultTitle = document.getElementById('result-title');
+            const finalScore = document.getElementById('final-score');
+            
+            finalScore.textContent = `${gameState.playerScore} - ${gameState.aiScore}`;
+            
+            if (gameState.playerScore > gameState.aiScore) {
+                resultTitle.textContent = '恭喜获胜!';
+                resultTitle.style.color = '#4caf50';
+            } else if (gameState.playerScore < gameState.aiScore) {
+                resultTitle.textContent = '遗憾落败';
+                resultTitle.style.color = '#f44336';
+            } else {
+                resultTitle.textContent = '平局';
+                resultTitle.style.color = '#ffd700';
+            }
+            
+            resultScreen.classList.add('show');
+        }
+
+        // 重新开始
+        function restartGame() {
+            gameState = {
+                currentRound: 1,
+                phase: 'idle',
+                playerScore: 0,
+                aiScore: 0,
+                playerShots: [],
+                aiShots: [],
+                isPlayerTurn: true,
+                difficulty: gameState.difficulty
+            };
+            
+            resetBall();
+            resetGoalkeeper();
+            
+            document.getElementById('result-screen').classList.remove('show');
+            document.getElementById('status').textContent = '第 1 轮 - 你的回合';
+            document.getElementById('controls-hint').textContent = '拖拽鼠标瞄准，松开射门';
+            
+            updateUI();
+        }
+
+        // 更新UI
+        function updateUI() {
+            document.getElementById('player-score').textContent = gameState.playerScore;
+            document.getElementById('ai-score').textContent = gameState.aiScore;
+            document.getElementById('round-info').textContent = `第 ${Math.min(gameState.currentRound, 5)} 轮 / 共 5 轮`;
+            
+            // 更新射门历史
+            updateShotHistory('player-history', gameState.playerShots, 5);
+            updateShotHistory('ai-history', gameState.aiShots, 5);
+            
+            if (gameState.phase === 'idle' && gameState.isPlayerTurn) {
+                document.getElementById('status').textContent = `第 ${gameState.currentRound} 轮 - 你的回合`;
+            }
+        }
+
+        function updateShotHistory(elementId, shots, totalRounds) {
+            const container = document.getElementById(elementId);
+            container.innerHTML = '';
+            
+            for (let i = 1; i <= totalRounds; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'shot-dot';
+                
+                const shot = shots.find(s => s.round === i);
+                if (shot) {
+                    dot.classList.add(shot.result);
+                } else {
+                    dot.classList.add('pending');
+                }
+                
+                container.appendChild(dot);
+            }
+        }
+
+        // 更新守门员
+        function updateGoalkeeper(delta) {
+            if (gameState.phase === 'player_saving') {
+                // 玩家控制守门员
+                const speed = 5;
+                if (keysPressed['ArrowLeft']) {
+                    goalkeeper.position.x -= speed * delta;
+                }
+                if (keysPressed['ArrowRight']) {
+                    goalkeeper.position.x += speed * delta;
+                }
+                
+                // 限制范围
+                goalkeeper.position.x = Math.max(-CONFIG.goalWidth / 2 + 0.5, 
+                    Math.min(CONFIG.goalWidth / 2 - 0.5, goalkeeper.position.x));
+                
+                // 跳跃
+                if (isJumping) {
+                    goalkeeper.position.y += jumpVelocity * delta;
+                    jumpVelocity -= 20 * delta;
+                    
+                    if (goalkeeper.position.y <= 0) {
+                        goalkeeper.position.y = 0;
+                        isJumping = false;
+                        jumpVelocity = 0;
+                    }
+                }
+            } else {
+                // AI控制守门员
+                const dx = goalkeeperTarget.x - goalkeeper.position.x;
+                const dy = goalkeeperTarget.y - goalkeeper.position.y;
+                
+                goalkeeper.position.x += dx * 5 * delta;
+                goalkeeper.position.y += dy * 3 * delta;
+                
+                // 扑救动画
+                if (Math.abs(dx) > 0.5) {
+                    goalkeeper.rotation.z = -dx * 0.2;
+                    if (goalkeeper.leftArm) goalkeeper.leftArm.rotation.z = Math.PI / 6 + Math.abs(dx) * 0.3;
+                    if (goalkeeper.rightArm) goalkeeper.rightArm.rotation.z = -Math.PI / 6 - Math.abs(dx) * 0.3;
+                }
+            }
+        }
+
+        // 更新球网物理
+        function updateNet(delta) {
+            if (!goalNet) return;
+            
+            const positions = goalNet.geometry.attributes.position;
+            const stiffness = 10;
+            const damping = 0.9;
+            
+            for (let i = 0; i < positions.count; i++) {
+                const def = netDeformation[i];
+                
+                // 弹簧力
+                const forceX = (def.originalX - positions.getX(i)) * stiffness;
+                const forceY = (def.originalY - positions.getY(i)) * stiffness;
+                const forceZ = (def.originalZ - positions.getZ(i)) * stiffness;
+                
+                def.velocityX += forceX * delta;
+                def.velocityY += forceY * delta;
+                def.velocityZ += forceZ * delta;
+                
+                def.velocityX *= damping;
+                def.velocityY *= damping;
+                def.velocityZ *= damping;
+                
+                positions.setX(i, positions.getX(i) + def.velocityX * delta);
+                positions.setY(i, positions.getY(i) + def.velocityY * delta);
+                positions.setZ(i, positions.getZ(i) + def.velocityZ * delta);
+            }
+            
+            positions.needsUpdate = true;
+        }
+
+        // 更新粒子
+        function updateParticles(delta) {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.position.add(p.userData.velocity);
+                p.userData.velocity.y -= 0.01;
+                p.userData.life -= delta * 0.5;
+                
+                if (p.userData.life <= 0) {
+                    scene.remove(p);
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // 主循环
+        let lastTime = 0;
+        function animate(time = 0) {
+            requestAnimationFrame(animate);
+            
+            const delta = Math.min((time - lastTime) / 1000, 0.1);
+            lastTime = time;
+            
+            // 物理步进
+            world.step(1/60, delta, 3);
+            
+            // 更新球位置
+            if (gameState.phase === 'shooting' || gameState.phase === 'ai_shooting') {
+                ball.position.copy(ballBody.position);
+                ball.quaternion.copy(ballBody.quaternion);
+                
+                // 马格努斯效应
+                const velocity = ballBody.velocity;
+                const angular = ballBody.angularVelocity;
+                const magnusForce = new CANNON.Vec3();
+                CANNON.Vec3.cross(angular, velocity, magnusForce);
+                magnusForce.scale(CONFIG.magnusCoefficient * velocity.norm(), magnusForce);
+                ballBody.force.add(magnusForce);
+                
+                // 检查进球或出界
+                if (ball.position.z <= 1) {
+                    if (checkGoal()) {
+                        if (gameState.phase === 'shooting') {
+                            // 检查是否被扑救
+                            if (checkSave()) {
+                                saveEffect();
+                            } else {
+                                goalEffect();
+                            }
+                        } else {
+                            // AI射门
+                            if (checkSave()) {
+                                saveEffect();
+                            } else {
+                                goalEffect();
+                            }
+                        }
+                        gameState.phase = 'result';
+                    } else if (ball.position.z < -CONFIG.goalDepth || 
+                               Math.abs(ball.position.x) > CONFIG.goalWidth / 2 + 1 ||
+                               ball.position.y > CONFIG.goalHeight + 1) {
+                        // 出界
+                        saveEffect();
+                        gameState.phase = 'result';
+                        setTimeout(() => nextRound(), 1500);
+                    }
+                }
+                
+                // 球落地
+                if (ball.position.y <= CONFIG.ballRadius) {
+                    ballBody.position.y = CONFIG.ballRadius;
+                    ballBody.velocity.y *= -0.5;
+                    ballBody.velocity.x *= 0.8;
+                    ballBody.velocity.z *= 0.8;
+                    
+                    if (Math.abs(ballBody.velocity.z) < 0.5) {
+                        if (gameState.phase === 'shooting' || gameState.phase === 'ai_shooting') {
+                            saveEffect();
+                            gameState.phase = 'result';
+                            setTimeout(() => nextRound(), 1500);
+                        }
+                    }
+                }
+            }
+            
+            // 更新守门员
+            updateGoalkeeper(delta);
+            
+            // 更新球网
+            updateNet(delta);
+            
+            // 更新粒子
+            updateParticles(delta);
+            
+            // 镜头震动
+            if (cameraShake.intensity > 0) {
+                camera.position.x = (Math.random() - 0.5) * cameraShake.intensity;
+                camera.position.y = 3 + (Math.random() - 0.5) * cameraShake.intensity;
+                cameraShake.intensity *= 0.9;
+                if (cameraShake.intensity < 0.01) {
+                    cameraShake.intensity = 0;
+                    camera.position.set(0, 3, 15);
+                }
+                camera.lookAt(0, 1, 0);
+            }
+            
+            renderer.render(scene, camera);
+        }
+
+        // 启动游戏
+        init();
+    </script>
+</body>
+</html>
