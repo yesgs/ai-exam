@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 点球大战竞技场</title>
+<style>
+:root {
+  --bg: #0a0e14;
+  --surface: #141b22;
+  --surface2: #1c2430;
+  --border: #2a3545;
+  --text: #c8d6e5;
+  --text-dim: #6b7d95;
+  --accent: #4cd964;
+  --accent2: #ff6b35;
+  --gold: #ffd700;
+  --silver: #c0c0c0;
+  --bronze: #cd7f32;
+  --glm: #5c7cfa;
+  --gpt: #10a37f;
+  --ds: #6c5ce7;
+  --kimi: #ff6b9d;
+  --mm: #ff9500;
+  --mimo: #00bcd4;
+  --qwen: #7c3aed;
+  --radius: 14px;
+  --radius-sm: 8px;
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Header ── */
+header {
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.logo {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.logo .icon { font-size: 28px; }
+.logo span { background: linear-gradient(135deg, var(--accent), #34c759); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+/* Controls */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+
+.btn-group {
+  display: flex;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.btn {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all .15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.btn:hover { color: var(--text); background: rgba(255,255,255,.04); }
+.btn.active { color: #fff; background: rgba(255,255,255,.1); }
+
+.btn-action {
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all .15s;
+  white-space: nowrap;
+}
+.btn-action:hover { border-color: var(--accent); color: var(--accent); }
+.btn-action.danger:hover { border-color: #ff4757; color: #ff4757; }
+
+/* Model tag filter */
+.model-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: 8px;
+}
+
+.model-tag {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: all .2s;
+  user-select: none;
+  background: var(--surface2);
+  color: var(--text-dim);
+  font-family: inherit;
+}
+.model-tag.active { color: #fff; border-color: currentColor; }
+.model-tag.glm { color: var(--glm); border-color: transparent; }
+.model-tag.glm.active { background: rgba(92,124,250,.15); border-color: var(--glm); }
+.model-tag.gpt { color: var(--gpt); border-color: transparent; }
+.model-tag.gpt.active { background: rgba(16,163,127,.15); border-color: var(--gpt); }
+.model-tag.ds { color: var(--ds); border-color: transparent; }
+.model-tag.ds.active { background: rgba(108,92,231,.15); border-color: var(--ds); }
+.model-tag.kimi { color: var(--kimi); border-color: transparent; }
+.model-tag.kimi.active { background: rgba(255,107,157,.15); border-color: var(--kimi); }
+.model-tag.mm { color: var(--mm); border-color: transparent; }
+.model-tag.mm.active { background: rgba(255,149,0,.15); border-color: var(--mm); }
+.model-tag.mimo { color: var(--mimo); border-color: transparent; }
+.model-tag.mimo.active { background: rgba(0,188,212,.15); border-color: var(--mimo); }
+.model-tag.qwen { color: var(--qwen); border-color: transparent; }
+.model-tag.qwen.active { background: rgba(124,58,237,.15); border-color: var(--qwen); }
+
+/* ── Main Grid ── */
+main {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+  background: var(--bg);
+}
+
+/* Layout modes */
+main.layout-2 { grid-template-columns: 1fr 1fr; }
+main.layout-3 { grid-template-columns: 1fr 1fr 1fr; }
+main.layout-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+main.layout-ab { grid-template-columns: 1fr 1fr; }
+main.layout-focus { grid-template-columns: 1fr; }
+
+/* ── Card ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  transition: all .3s cubic-bezier(.4,0,.2,1);
+  min-height: 300px;
+}
+
+.card.focused {
+  border-color: var(--accent);
+  box-shadow: 0 0 30px rgba(76,217,100,.15);
+}
+
+.card.dimmed {
+  opacity: .35;
+  filter: grayscale(.4);
+}
+
+.card-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.card-name {
+  font-weight: 700;
+  font-size: 13px;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.card-badge {
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(255,215,0,.15);
+  color: var(--gold);
+}
+
+.card-badge span { font-size: 10px; opacity: .7; }
+
+.card-rank {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 11px;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.rank-1 { background: var(--gold); color: #000; }
+.rank-2 { background: var(--silver); color: #000; }
+.rank-3 { background: var(--bronze); color: #000; }
+.rank-other { background: var(--surface); color: var(--text-dim); border: 1px solid var(--border); }
+
+.card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.card-btn {
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all .15s;
+  font-family: inherit;
+}
+.card-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.card-iframe-wrap {
+  flex: 1;
+  position: relative;
+  background: #000;
+  min-height: 250px;
+}
+
+.card-iframe-wrap iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  display: block;
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  z-index: 2;
+  transition: opacity .3s;
+  pointer-events: none;
+}
+
+.loading-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Empty slot */
+.empty-slot {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 14px;
+  flex-direction: column;
+  gap: 12px;
+}
+.empty-slot .icon { font-size: 40px; opacity: .3; }
+.empty-slot .hint { font-size: 12px; opacity: .5; }
+
+/* ── Sidebar (feature comparison) ── */
+.sidebar-toggle {
+  position: fixed;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 16px 8px;
+  border-radius: 8px 0 0 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-right: none;
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 16px;
+  transition: all .2s;
+  z-index: 20;
+}
+.sidebar-toggle:hover { background: var(--surface2); }
+
+.sidebar {
+  position: fixed;
+  right: 0;
+  top: 0;
+  height: 100%;
+  width: 420px;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  z-index: 30;
+  transform: translateX(100%);
+  transition: transform .3s cubic-bezier(.4,0,.2,1);
+  overflow-y: auto;
+  padding: 24px;
+  box-shadow: -4px 0 30px rgba(0,0,0,.5);
+}
+.sidebar.open { transform: translateX(0); }
+
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.5);
+  z-index: 25;
+  display: none;
+}
+.sidebar-backdrop.open { display: block; }
+
+.sidebar h3 {
+  font-size: 16px;
+  margin-bottom: 20px;
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compare-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.compare-table th,
+.compare-table td {
+  padding: 8px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.compare-table th {
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 11px;
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+}
+.compare-table th:first-child { text-align: left; min-width: 120px; }
+.compare-table td:first-child { text-align: left; font-weight: 600; color: var(--text-dim); font-size: 11px; }
+.compare-table .check { color: var(--accent); }
+.compare-table .cross { color: #ff4757; }
+.compare-table .partial { color: var(--accent2); }
+
+/* ── Toast ── */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 24px;
+  border-radius: 24px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 50;
+  opacity: 0;
+  transition: opacity .3s;
+  pointer-events: none;
+}
+.toast.show { opacity: 1; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  main.layout-3, main.layout-4 { grid-template-columns: 1fr 1fr; }
+  header { flex-wrap: wrap; }
+  .model-tags { display: none; }
+}
+@media (max-width: 600px) {
+  main.layout-2, main.layout-3, main.layout-4, main.layout-ab { grid-template-columns: 1fr; }
+}
+
+/* ── Animations ── */
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76,217,100,.4); }
+  50% { box-shadow: 0 0 0 8px rgba(76,217,100,0); }
+}
+.card.just-focused {
+  animation: pulse .6s ease-out;
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <span class="icon">🏟️</span>
+    <span>AI 点球大战 · 竞技场</span>
+  </div>
+  <div class="controls">
+    <span style="font-size:11px;color:var(--text-dim);margin-right:4px;">布局</span>
+    <div class="btn-group" id="layoutGroup">
+      <button class="btn" data-layout="ab">A/B</button>
+      <button class="btn active" data-layout="2">2列</button>
+      <button class="btn" data-layout="3">3列</button>
+      <button class="btn" data-layout="4">4列</button>
+      <button class="btn" data-layout="focus">焦点</button>
+    </div>
+    <span style="font-size:11px;color:var(--text-dim);margin-left:12px;">模型</span>
+    <div class="model-tags" id="modelTags"></div>
+  </div>
+  <button class="btn-action" onclick="window.location.reload()" title="刷新所有">🔄 刷新</button>
+  <button class="btn-action" id="compareBtn" title="查看对比表">📊 对比</button>
+</header>
+
+<!-- Main Grid -->
+<main id="grid" class="layout-2"></main>
+
+<!-- Sidebar backdrop -->
+<div class="sidebar-backdrop" id="sidebarBackdrop"></div>
+
+<!-- Sidebar -->
+<div class="sidebar" id="sidebar">
+  <h3>📊 功能实现对比</h3>
+  <div style="overflow-x:auto;">
+    <table class="compare-table">
+      <thead>
+        <tr>
+          <th>功能</th>
+          <th>GLM-5.2</th>
+          <th>GPT-5.5</th>
+          <th>DS-V4</th>
+          <th>GLM-5.1</th>
+          <th>MM-3</th>
+          <th>Kimi</th>
+          <th>MiMo</th>
+          <th>Qwen</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>马格努斯效应</td>  <td class="check">✓</td><td class="check">✓</td><td class="partial">△</td><td class="partial">△</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>瞄准辅助线</td>    <td class="check">✓</td><td class="check">✓</td><td class="partial">△</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="partial">△</td><td class="partial">△</td></tr>
+        <tr><td>AI 难度三档</td>   <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td>5轮交替制</td>     <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td>玩家控制守门员</td> <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="partial">△</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>镜头震动</td>      <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+        <tr><td>球网物理</td>      <td class="partial">△</td><td class="partial">△</td><td class="check">✓</td><td class="cross">✗</td><td class="partial">△</td><td class="cross">✗</td><td class="cross">✗</td><td class="partial">△</td></tr>
+        <tr><td>观众欢唿特效</td>  <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="partial">△</td><td class="partial">△</td><td class="partial">△</td></tr>
+        <tr><td>记分牌翻转</td>    <td class="check">✓</td><td class="check">✓</td><td class="partial">△</td><td class="check">✓</td><td class="partial">△</td><td class="partial">△</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+        <tr><td>守门员扑救动画</td> <td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="partial">△</td><td class="partial">△</td><td class="partial">△</td></tr>
+        <tr><td>球门柱碰撞</td>    <td class="cross">✗</td><td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td><td class="cross">✗</td></tr>
+        <tr><td>突然死亡/加赛</td> <td class="check">✓</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td><td class="cross">✗</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top:16px;font-size:11px;color:var(--text-dim);">
+    ✓ = 完整实现 &nbsp; △ = 部分实现 &nbsp; ✗ = 未实现/Bug
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Model Registry ──
+const MODELS = [
+  { id:'glm-5.2',    name:'GLM 5.2',     family:'glm',  score:'7.25', rank:1, path:'/game/penalty-shootout/glm-5.2/index.html',    lines:1150, size:'48KB',  color:'#5c7cfa' },
+  { id:'gpt-5.5',    name:'GPT 5.5',     family:'gpt',  score:'7.25', rank:1, path:'/game/penalty-shootout/gpt-5.5/index.html',    lines:1321, size:'51KB',  color:'#10a37f' },
+  { id:'deepseek-4', name:'DeepSeek V4',  family:'ds',   score:'7.0',  rank:3, path:'/game/penalty-shootout/deepseek-4/index.html', lines:1516, size:'51KB',  color:'#6c5ce7' },
+  { id:'glm-5.1',    name:'GLM 5.1',     family:'glm',  score:'6.5',  rank:4, path:'/game/penalty-shootout/glm-5.1/index.html',    lines:1094, size:'43KB',  color:'#5c7cfa' },
+  { id:'minimax-3',  name:'MiniMax 3',    family:'mm',   score:'6.5',  rank:4, path:'/game/penalty-shootout/mimimax-3/index.html',  lines:1288, size:'49KB',  color:'#ff9500' },
+  { id:'kimi-2.6',   name:'Kimi 2.6',     family:'kimi', score:'5.0',  rank:6, path:'/game/penalty-shootout/kimi-2.6/index.html',   lines:1395, size:'44KB',  color:'#ff6b9d' },
+  { id:'mimo',       name:'MiMo 2.5 Pro',  family:'mimo', score:'4.75', rank:7, path:'/game/penalty-shootout/mimo-2.5-pro/penalty.html', lines:1032, size:'38KB',  color:'#00bcd4' },
+  { id:'qwen-3.7',   name:'Qwen 3.7',     family:'qwen', score:'3.5',  rank:8, path:'/game/penalty-shootout/qwen-3.7/index.html',   lines:1330, size:'48KB',  color:'#7c3aed' },
+];
+
+// ── State ──
+const state = {
+  layout: '2',
+  focusId: null,
+  activeModels: new Set(MODELS.map(m => m.id)),
+  slots: [], // { modelId, iframeLoaded }
+};
+
+// ── DOM refs ──
+const grid = document.getElementById('grid');
+const toast = document.getElementById('toast');
+const sidebar = document.getElementById('sidebar');
+const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+
+// ── Toast ──
+let toastTimer;
+function showToast(msg) {
+  clearTimeout(toastTimer);
+  toast.textContent = msg;
+  toast.classList.add('show');
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 2000);
+}
+
+// ── Build model tags ──
+const modelTagsEl = document.getElementById('modelTags');
+function buildModelTags() {
+  modelTagsEl.innerHTML = '';
+  MODELS.forEach(m => {
+    const tag = document.createElement('button');
+    tag.className = `model-tag ${m.family}${state.activeModels.has(m.id) ? ' active' : ''}`;
+    tag.textContent = `${m.name} ⭐${m.score}`;
+    tag.onclick = () => {
+      if (state.activeModels.has(m.id)) {
+        if (state.activeModels.size <= 1) return showToast('至少保留一个模型');
+        state.activeModels.delete(m.id);
+      } else {
+        state.activeModels.add(m.id);
+      }
+      state.focusId = null;
+      render();
+    };
+    modelTagsEl.appendChild(tag);
+  });
+}
+
+// ── Layout buttons ──
+document.querySelectorAll('#layoutGroup .btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#layoutGroup .btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.layout = btn.dataset.layout;
+    state.focusId = null;
+    render();
+  });
+});
+
+// ── Sidebar ──
+document.getElementById('compareBtn').addEventListener('click', () => {
+  sidebar.classList.add('open');
+  sidebarBackdrop.classList.add('open');
+});
+sidebarBackdrop.addEventListener('click', () => {
+  sidebar.classList.remove('open');
+  sidebarBackdrop.classList.remove('open');
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { sidebar.classList.remove('open'); sidebarBackdrop.classList.remove('open'); } });
+
+// ── Render ──
+function render() {
+  const activeList = MODELS.filter(m => state.activeModels.has(m.id));
+  let displayList = activeList;
+
+  // In focus mode, only show focused model
+  if (state.layout === 'focus' && state.focusId) {
+    displayList = activeList.filter(m => m.id === state.focusId);
+  } else if (state.layout === 'ab') {
+    displayList = activeList.slice(0, 2);
+    if (displayList.length < 2) displayList = activeList.slice(0, 2);
+  }
+
+  // Update grid layout class
+  grid.className = `layout-${state.layout}`;
+
+  // Build model tags
+  buildModelTags();
+
+  // Build cards
+  const existingCards = {};
+  grid.querySelectorAll('.card').forEach(c => {
+    existingCards[c.dataset.modelId] = c;
+  });
+
+  grid.innerHTML = '';
+
+  displayList.forEach((model, idx) => {
+    const existing = existingCards[model.id];
+    if (existing) {
+      grid.appendChild(existing);
+      // Update bar classes
+      updateCardBar(existing, model, idx, displayList.length);
+    } else {
+      const card = createCard(model, idx, displayList.length);
+      grid.appendChild(card);
+    }
+  });
+
+  // If focus mode and nothing selected, show first
+  if (state.layout === 'focus' && !state.focusId && activeList.length > 0) {
+    state.focusId = activeList[0].id;
+    render();
+  }
+}
+
+function updateCardBar(card, model, idx, total) {
+  const bar = card.querySelector('.card-bar');
+  const rankEl = bar.querySelector('.card-rank');
+  rankEl.className = `card-rank ${model.rank <= 3 ? `rank-${model.rank}` : 'rank-other'}`;
+  rankEl.textContent = model.rank <= 3 ? model.rank : model.rank;
+
+  const nameSpan = bar.querySelector('.card-name span');
+  nameSpan.textContent = model.name;
+
+  const badge = bar.querySelector('.card-badge');
+  badge.innerHTML = `⭐ ${model.score} <span>/10</span>`;
+}
+
+function createCard(model, idx, total) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.modelId = model.id;
+  if (state.focusId === model.id) {
+    card.classList.add('focused', 'just-focused');
+    setTimeout(() => card.classList.remove('just-focused'), 700);
+  }
+  if (state.focusId && state.focusId !== model.id) {
+    card.classList.add('dimmed');
+  }
+
+  const rankClass = model.rank <= 3 ? `rank-${model.rank}` : 'rank-other';
+
+  card.innerHTML = `
+    <div class="card-bar">
+      <div class="card-name">
+        <span class="card-rank ${rankClass}">${model.rank}</span>
+        <span>${model.name}</span>
+        <span class="card-badge">⭐ ${model.score} <span>/10</span></span>
+      </div>
+      <span style="font-size:10px;color:var(--text-dim)">${model.lines}行 ${model.size}</span>
+      <div class="card-actions">
+        <button class="card-btn focus-btn" title="焦点模式">🔍 聚焦</button>
+        <button class="card-btn reload-btn" title="重新加载">🔄</button>
+      </div>
+    </div>
+    <div class="card-iframe-wrap">
+      <div class="loading-overlay"><div class="spinner"></div></div>
+      <iframe src="${model.path}" allow="accelerometer; autoplay; clipboard-write" loading="lazy"></iframe>
+    </div>
+  `;
+
+  // Event handlers
+  const iframe = card.querySelector('iframe');
+  const loadingOverlay = card.querySelector('.loading-overlay');
+
+  iframe.addEventListener('load', () => {
+    loadingOverlay.classList.add('hidden');
+  });
+
+  // Click on card to focus
+  card.addEventListener('click', (e) => {
+    // Don't trigger if clicking buttons or iframe
+    if (e.target.closest('.card-btn')) return;
+
+    if (state.layout === 'focus') {
+      // In focus mode, clicking cycles through models
+      const activeList = MODELS.filter(m => state.activeModels.has(m.id));
+      const curIdx = activeList.findIndex(m => m.id === state.focusId);
+      state.focusId = activeList[(curIdx + 1) % activeList.length].id;
+    } else {
+      state.focusId = model.id;
+      state.layout = 'focus';
+      document.querySelectorAll('#layoutGroup .btn').forEach(b => b.classList.remove('active'));
+      document.querySelector('#layoutGroup .btn[data-layout="focus"]').classList.add('active');
+    }
+    render();
+  });
+
+  // Focus button
+  card.querySelector('.focus-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    state.focusId = model.id;
+    state.layout = 'focus';
+    document.querySelectorAll('#layoutGroup .btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('#layoutGroup .btn[data-layout="focus"]').classList.add('active');
+    render();
+  });
+
+  // Reload button
+  card.querySelector('.reload-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    iframe.src = '';
+    loadingOverlay.classList.remove('hidden');
+    setTimeout(() => { iframe.src = model.path; }, 100);
+  });
+
+  return card;
+}
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown', (e) => {
+  // Ctrl+数字 切换布局
+  if (e.ctrlKey || e.metaKey) {
+    const layoutMap = { '1':'focus', '2':'ab', '3':'2', '4':'3', '5':'4' };
+    const layout = layoutMap[e.key];
+    if (layout) {
+      e.preventDefault();
+      state.layout = layout;
+      document.querySelectorAll('#layoutGroup .btn').forEach(b => b.classList.remove('active'));
+      document.querySelector(`#layoutGroup .btn[data-layout="${layout}"]`).classList.add('active');
+      if (layout !== 'focus') state.focusId = null;
+      render();
+    }
+  }
+
+  // Escape to exit focus
+  if (e.key === 'Escape' && state.layout === 'focus') {
+    state.layout = '2';
+    state.focusId = null;
+    document.querySelectorAll('#layoutGroup .btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('#layoutGroup .btn[data-layout="2"]').classList.add('active');
+    render();
+  }
+
+  // Arrow keys to switch focus model
+  if (state.layout === 'focus' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+    e.preventDefault();
+    const activeList = MODELS.filter(m => state.activeModels.has(m.id));
+    const curIdx = activeList.findIndex(m => m.id === state.focusId);
+    const dir = e.key === 'ArrowRight' ? 1 : -1;
+    const nextIdx = (curIdx + dir + activeList.length) % activeList.length;
+    state.focusId = activeList[nextIdx].id;
+    render();
+  }
+});
+
+// ── Initial render ──
+render();
+
+console.log('🏟️ AI 点球大战竞技场已就绪');
+console.log(`   已加载 ${MODELS.length} 个模型实现`);
+console.log('   快捷键: Ctrl+1~5 切换布局 | ← → 切换模型 | Esc 退出焦点');
+</script>
+
+</body>
+</html>
