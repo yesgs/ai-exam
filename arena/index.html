@@ -526,7 +526,7 @@ function render() {
 
   buildModelTags();
 
-  // Reuse existing cards where possible to preserve iframe state
+  // Reuse existing cards only if iframe src matches current project
   const existingCards = {};
   grid.querySelectorAll('.card').forEach(c => {
     existingCards[c.dataset.modelId] = c;
@@ -537,8 +537,15 @@ function render() {
   displayList.forEach(model => {
     const existing = existingCards[model.id];
     if (existing) {
-      grid.appendChild(existing);
-      updateCardBar(existing, model);
+      const iframe = existing.querySelector('iframe');
+      if (iframe && iframe.getAttribute('src') === model.path) {
+        grid.appendChild(existing);
+        updateCardBar(existing, model);
+      } else {
+        // Project changed — src mismatch, recreate card
+        const card = createCard(model);
+        grid.appendChild(card);
+      }
     } else {
       const card = createCard(model);
       grid.appendChild(card);
