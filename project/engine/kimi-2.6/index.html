@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>四冲程活塞发动机剖面动画</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        background: #0f172a;
+        color: #e2e8f0;
+        font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+        padding: 20px;
+    }
+    h1 {
+        margin-bottom: 16px;
+        font-size: 22px;
+        letter-spacing: 2px;
+        color: #94a3b8;
+    }
+    .container {
+        display: flex;
+        gap: 24px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    canvas {
+        background: #0b1120;
+        border-radius: 10px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+        border: 1px solid #1e293b;
+    }
+    .info-panel {
+        background: #1e293b;
+        padding: 20px;
+        border-radius: 10px;
+        width: 220px;
+        border: 1px solid #334155;
+    }
+    .info-panel h2 {
+        margin-top: 0;
+        font-size: 16px;
+        color: #cbd5e1;
+        margin-bottom: 14px;
+        border-bottom: 1px solid #334155;
+        padding-bottom: 10px;
+    }
+    .stroke-indicator {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-top: 10px;
+    }
+    .stroke-item {
+        padding: 10px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        transition: all 0.25s ease;
+        opacity: 0.35;
+        border-left: 3px solid transparent;
+    }
+    .stroke-item.active {
+        opacity: 1;
+        font-weight: bold;
+        transform: translateX(4px);
+    }
+    .stroke-intake { border-left-color: #3b82f6; background: rgba(59,130,246,0.12); }
+    .stroke-compression { border-left-color: #60a5fa; background: rgba(96,165,250,0.12); }
+    .stroke-power { border-left-color: #f59e0b; background: rgba(245,158,11,0.12); }
+    .stroke-exhaust { border-left-color: #6b7280; background: rgba(107,114,128,0.12); }
+    .angle-display {
+        margin-top: 18px;
+        font-size: 18px;
+        font-family: 'Consolas', monospace;
+        color: #94a3b8;
+    }
+    .rpm-control {
+        margin-top: 18px;
+    }
+    .rpm-control label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+        color: #94a3b8;
+    }
+    .rpm-control input[type="range"] {
+        width: 100%;
+        accent-color: #60a5fa;
+    }
+    .rpm-value {
+        text-align: center;
+        margin-top: 6px;
+        font-size: 14px;
+        color: #60a5fa;
+        font-weight: bold;
+    }
+    .legend {
+        margin-top: 16px;
+        font-size: 12px;
+        color: #64748b;
+        line-height: 1.8;
+    }
+    .legend-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        margin-right: 6px;
+        vertical-align: middle;
+    }
+</style>
+</head>
+<body>
+<h1>四冲程活塞发动机工作原理</h1>
+<div class="container">
+<canvas id="engineCanvas" width="620" height="680"></canvas>
+<div class="info-panel">
+    <h2>冲程状态</h2>
+    <div class="stroke-indicator">
+        <div class="stroke-item stroke-intake" id="st-intake">1. 进气冲程</div>
+        <div class="stroke-item stroke-compression" id="st-compression">2. 压缩冲程</div>
+        <div class="stroke-item stroke-power" id="st-power">3. 动力冲程</div>
+        <div class="stroke-item stroke-exhaust" id="st-exhaust">4. 排气冲程</div>
+    </div>
+    <div class="angle-display">曲轴: <span id="angleDisplay">0°</span></div>
+    <div class="rpm-control">
+        <label>发动机转速</label>
+        <input type="range" id="rpmSlider" min="100" max="1800" value="600">
+        <div class="rpm-value" id="rpmValue">600 RPM</div>
+    </div>
+    <div class="legend">
+        <div><span class="legend-dot" style="background:rgba(60,140,255,0.7)"></span>蓝色 = 进气（空气）</div>
+        <div><span class="legend-dot" style="background:rgba(255,160,20,0.85)"></span>黄色 = 燃烧/动力</div>
+        <div><span class="legend-dot" style="background:rgba(130,130,130,0.7)"></span>灰色 = 排气</div>
+    </div>
+</div>
+</div>
+<script>
+const canvas = document.getElementById('engineCanvas');
+const ctx = canvas.getContext('2d');
+
+// ==================== 几何参数 ====================
+const CX = 310;               // 气缸轴线 / 曲轴中心 X
+const CY = 540;               // 曲轴中心 Y
+const CRANK_R = 45;           // 曲柄半径 (px)
+const ROD_L = 155;            // 连杆长度 (px)
+const PISTON_H = 34;          // 活塞高度
+const BORE = 100;             // 气缸直径
+const WALL_THICK = 12;        // 气缸壁厚
+const HEAD_H = 30;            // 气缸盖高度
+const CHAMBER_H = 20;         // 燃烧室高度 (TDC活塞顶到气缸顶)
+
+const CYL_X = CX;             // 气缸左边界 (剖切中心线)
+const CYL_R = CX + BORE;      // 气缸右边界 (内径)
+const CYL_OUT_R = CYL_R + WALL_THICK; // 气缸外壁
+
+const PISTON_X1 = CYL_X + 3;  // 活塞左边缘
+const PISTON_X2 = CYL_R - 3;  // 活塞右边缘
+
+// 关键 Y 坐标
+const TDC_PIN_Y = CY - CRANK_R - ROD_L;           // 上止点活塞销 Y
+const TDC_PISTON_TOP = TDC_PIN_Y - PISTON_H;      // 上止点活塞顶 Y
+const CYL_HEAD_TOP = TDC_PISTON_TOP - CHAMBER_H;  // 气缸盖底部 (燃烧室顶部)
+const BLOCK_TOP = CYL_HEAD_TOP - HEAD_H - 6;      // 发动机块顶部
+const BLOCK_BOTTOM = CY + 95;                     // 曲轴箱底部
+
+// 阀门参数
+const INTAKE_VALVE_X = CYL_X + 32;
+const EXHAUST_VALVE_X = CYL_R - 32;
+const VALVE_Y = CYL_HEAD_TOP - 5; // 阀座位置 (阀头关闭时密封)
+
+// 火花塞
+const SPARK_X = CX + 2;
+const SPARK_Y = CYL_HEAD_TOP + 14;
+
+// 飞轮
+const FLYWHEEL_CX = CX + 88;
+const FLYWHEEL_R = 48;
+
+let crankAngle = 0;   // 曲轴角度 (度), 0-720, 0=进气TDC
+let rpm = 600;
+let lastTime = 0;
+
+// ==================== 运动学计算 ====================
+function getPistonPos(angleRad) {
+    const crankPinX = CX + CRANK_R * Math.sin(angleRad);
+    const crankPinY = CY - CRANK_R * Math.cos(angleRad);
+    const dx = CX - crankPinX;
+    const dy = Math.sqrt(ROD_L * ROD_L - dx * dx);
+    const pinY = crankPinY - dy;
+    return {
+        pinY,
+        pistonTop: pinY - PISTON_H,
+        pistonBottom: pinY,
+        crankPinX,
+        crankPinY
+    };
+}
+
+function getStroke(angleDeg) {
+    angleDeg = ((angleDeg % 720) + 720) % 720;
+    if (angleDeg < 180) return 'intake';
+    if (angleDeg < 360) return 'compression';
+    if (angleDeg < 540) return 'power';
+    return 'exhaust';
+}
+
+function getGasColor(angleDeg) {
+    angleDeg = ((angleDeg % 720) + 720) % 720;
+    if (angleDeg < 180) {
+        const p = angleDeg / 180;
+        const a = 0.45 + p * 0.35;
+        return { fill: `rgba(60, 150, 255, ${a})`, name: '进气', spark: false };
+    } else if (angleDeg < 360) {
+        const p = (angleDeg - 180) / 180;
+        const a = 0.8 - p * 0.25;
+        return { fill: `rgba(90, 170, 245, ${a})`, name: '压缩', spark: false };
+    } else if (angleDeg < 540) {
+        const p = (angleDeg - 360) / 180;
+        const a = 0.92 - p * 0.22;
+        return { fill: `rgba(255, 165, 25, ${a})`, name: '动力', spark: angleDeg < 380 };
+    } else {
+        const p = (angleDeg - 540) / 180;
+        const a = 0.75 - p * 0.35;
+        return { fill: `rgba(130, 130, 130, ${Math.max(0.35, a)})`, name: '排气', spark: false };
+    }
+}
+
+function getValveLift(angleDeg, valve) {
+    angleDeg = ((angleDeg % 720) + 720) % 720;
+    let lift = 0;
+    if (valve === 'intake') {
+        if (angleDeg >= 0 && angleDeg <= 180) {
+            if (angleDeg < 25) lift = angleDeg / 25;
+            else if (angleDeg > 155) lift = (180 - angleDeg) / 25;
+            else lift = 1;
+        }
+    } else {
+        if (angleDeg >= 540 && angleDeg <= 720) {
+            if (angleDeg < 565) lift = (angleDeg - 540) / 25;
+            else if (angleDeg > 695) lift = (720 - angleDeg) / 25;
+            else lift = 1;
+        }
+    }
+    return lift * 16;
+}
+
+// ==================== 绘制函数 ====================
+function drawEngineBlock() {
+    // 曲轴箱 + 气缸体 右侧外壁
+    ctx.fillStyle = '#4a5568';
+    ctx.fillRect(CYL_R, BLOCK_TOP, WALL_THICK + 22, BLOCK_BOTTOM - BLOCK_TOP);
+
+    // 曲轴箱底部
+    ctx.fillStyle = '#3a4554';
+    ctx.fillRect(CYL_X - 18, BLOCK_BOTTOM - 10, (CYL_OUT_R + 22) - CYL_X + 18, 10);
+
+    // 气缸盖主体
+    ctx.fillStyle = '#4a5568';
+    ctx.fillRect(CYL_X - 12, CYL_HEAD_TOP - HEAD_H, (CYL_OUT_R + 10) - CYL_X + 12, HEAD_H);
+
+    // 气缸盖顶部平台
+    ctx.fillStyle = '#3a4554';
+    ctx.fillRect(CYL_X - 18, BLOCK_TOP, (CYL_OUT_R + 16) - CYL_X + 18, 6);
+
+    // 进气歧管接口 (从气缸盖顶部延伸到阀座)
+    ctx.fillStyle = '#3a4554';
+    ctx.fillRect(INTAKE_VALVE_X - 14, BLOCK_TOP, 28, HEAD_H + 6);
+    ctx.fillStyle = 'rgba(60,150,255,0.2)';
+    ctx.fillRect(INTAKE_VALVE_X - 10, BLOCK_TOP - 30, 20, 30);
+    ctx.strokeStyle = '#4a5568';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(INTAKE_VALVE_X - 10, BLOCK_TOP - 30, 20, 30);
+
+    // 排气歧管接口
+    ctx.fillStyle = '#3a4554';
+    ctx.fillRect(EXHAUST_VALVE_X - 14, BLOCK_TOP, 28, HEAD_H + 6);
+    ctx.fillStyle = 'rgba(130,130,130,0.25)';
+    ctx.fillRect(EXHAUST_VALVE_X - 10, BLOCK_TOP - 30, 20, 30);
+    ctx.strokeStyle = '#4a5568';
+    ctx.strokeRect(EXHAUST_VALVE_X - 10, BLOCK_TOP - 30, 20, 30);
+
+    // 气缸内壁线 (右侧)
+    ctx.strokeStyle = '#6b7b8e';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(CYL_R, CYL_HEAD_TOP);
+    ctx.lineTo(CYL_R, CY + 55);
+    ctx.stroke();
+
+    // 剖切中心线 (虚线)
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(CYL_X, BLOCK_TOP);
+    ctx.lineTo(CYL_X, BLOCK_BOTTOM);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 剖面线标记 (45°斜线)
+    ctx.strokeStyle = '#55606e';
+    ctx.lineWidth = 1;
+    for (let y = BLOCK_TOP + 4; y < BLOCK_BOTTOM - 4; y += 10) {
+        ctx.beginPath();
+        ctx.moveTo(CYL_X - 7, y);
+        ctx.lineTo(CYL_X, y + 7);
+        ctx.stroke();
+    }
+}
+
+function drawGas(pistonTop, angleDeg) {
+    const gas = getGasColor(angleDeg);
+    const gasTop = CYL_HEAD_TOP;
+    const gasBottom = pistonTop;
+    if (gasBottom <= gasTop) return;
+
+    // 主气体填充
+    ctx.fillStyle = gas.fill;
+    ctx.fillRect(CYL_X + 1, gasTop, CYL_R - CYL_X - 1, gasBottom - gasTop);
+
+    // 压缩冲程温度指示 (中心更亮)
+    if (getStroke(angleDeg) === 'compression') {
+        const compProg = (angleDeg - 180) / 180;
+        const grad = ctx.createRadialGradient(CX, (gasTop + gasBottom) / 2, 5, CX, (gasTop + gasBottom) / 2, (gasBottom - gasTop) * 0.6);
+        grad.addColorStop(0, `rgba(255, 200, 100, ${compProg * 0.15})`);
+        grad.addColorStop(1, 'rgba(255, 200, 100, 0)');
+        ctx.fillStyle = grad;
+        ctx.fillRect(CYL_X + 1, gasTop, CYL_R - CYL_X - 1, gasBottom - gasTop);
+    }
+
+    // 进气流动箭头
+    if (getStroke(angleDeg) === 'intake') {
+        const t = (angleDeg % 180) / 180;
+        const alpha = 0.25 + 0.3 * Math.sin(t * Math.PI);
+        ctx.strokeStyle = `rgba(180, 220, 255, ${alpha})`;
+        ctx.lineWidth = 2;
+        const ax = INTAKE_VALVE_X;
+        const ay = CYL_HEAD_TOP - 10;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay - 12);
+        ctx.lineTo(ax, ay + 3);
+        ctx.lineTo(ax - 5, ay - 2);
+        ctx.moveTo(ax, ay + 3);
+        ctx.lineTo(ax + 5, ay - 2);
+        ctx.stroke();
+    }
+
+    // 排气流动箭头
+    if (getStroke(angleDeg) === 'exhaust') {
+        const t = ((angleDeg - 540) % 180) / 180;
+        const alpha = 0.25 + 0.3 * Math.sin(t * Math.PI);
+        ctx.strokeStyle = `rgba(180, 180, 180, ${alpha})`;
+        ctx.lineWidth = 2;
+        const ax = EXHAUST_VALVE_X;
+        const ay = CYL_HEAD_TOP - 8;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay + 8);
+        ctx.lineTo(ax, ay - 8);
+        ctx.lineTo(ax - 5, ay - 3);
+        ctx.moveTo(ax, ay - 8);
+        ctx.lineTo(ax + 5, ay - 3);
+        ctx.stroke();
+    }
+
+    // 点火闪光
+    if (gas.spark) {
+        const phase = (angleDeg - 360) / 20; // 0-1
+        if (phase <= 1) {
+            const intensity = 1 - phase;
+            ctx.fillStyle = `rgba(255, 255, 220, ${intensity * 0.35})`;
+            ctx.fillRect(CYL_X + 1, gasTop, CYL_R - CYL_X - 1, gasBottom - gasTop);
+
+            ctx.fillStyle = `rgba(255, 255, 180, ${intensity})`;
+            ctx.beginPath();
+            ctx.arc(SPARK_X, SPARK_Y, 5 + 6 * intensity, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = `rgba(255, 255, 150, ${intensity})`;
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 8; i++) {
+                const sa = (i / 8) * Math.PI * 2 + phase * 4;
+                const len = 10 + 8 * intensity;
+                ctx.beginPath();
+                ctx.moveTo(SPARK_X, SPARK_Y);
+                ctx.lineTo(SPARK_X + Math.cos(sa) * len, SPARK_Y + Math.sin(sa) * len);
+                ctx.stroke();
+            }
+        }
+    }
+}
+
+function drawValves(angleDeg) {
+    const intakeLift = getValveLift(angleDeg, 'intake');
+    const exhaustLift = getValveLift(angleDeg, 'exhaust');
+
+    // 进气阀
+    const ivY = VALVE_Y - intakeLift;
+    ctx.fillStyle = '#9aaab8';
+    ctx.fillRect(INTAKE_VALVE_X - 3, ivY - 28, 6, 28);
+    ctx.beginPath();
+    ctx.moveTo(INTAKE_VALVE_X - 11, ivY + 5);
+    ctx.lineTo(INTAKE_VALVE_X + 11, ivY + 5);
+    ctx.lineTo(INTAKE_VALVE_X + 7, ivY - 4);
+    ctx.lineTo(INTAKE_VALVE_X - 7, ivY - 4);
+    ctx.closePath();
+    ctx.fillStyle = '#a8b8c6';
+    ctx.fill();
+    ctx.strokeStyle = '#7a8a98';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 进气弹簧
+    if (intakeLift > 0.1) {
+        ctx.strokeStyle = '#6b7b8e';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let i = 0; i < 7; i++) {
+            const sy = VALVE_Y - 28 - i * 3 + intakeLift * 0.4;
+            const sx = INTAKE_VALVE_X + (i % 2 === 0 ? -5 : 5);
+            if (i === 0) ctx.moveTo(sx, sy);
+            else ctx.lineTo(sx, sy);
+        }
+        ctx.stroke();
+    }
+
+    // 排气阀
+    const evY = VALVE_Y - exhaustLift;
+    ctx.fillStyle = '#b0a898';
+    ctx.fillRect(EXHAUST_VALVE_X - 3, evY - 28, 6, 28);
+    ctx.beginPath();
+    ctx.moveTo(EXHAUST_VALVE_X - 11, evY + 5);
+    ctx.lineTo(EXHAUST_VALVE_X + 11, evY + 5);
+    ctx.lineTo(EXHAUST_VALVE_X + 7, evY - 4);
+    ctx.lineTo(EXHAUST_VALVE_X - 7, evY - 4);
+    ctx.closePath();
+    ctx.fillStyle = '#c4b8a8';
+    ctx.fill();
+    ctx.strokeStyle = '#9a8e7e';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 排气弹簧
+    if (exhaustLift > 0.1) {
+        ctx.strokeStyle = '#6b7b8e';
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        for (let i = 0; i < 7; i++) {
+            const sy = VALVE_Y - 28 - i * 3 + exhaustLift * 0.4;
+            const sx = EXHAUST_VALVE_X + (i % 2 === 0 ? -5 : 5);
+            if (i === 0) ctx.moveTo(sx, sy);
+            else ctx.lineTo(sx, sy);
+        }
+        ctx.stroke();
+    }
+}
+
+function drawSparkPlug() {
+    // 陶瓷体
+    ctx.fillStyle = '#c8d0d8';
+    ctx.fillRect(SPARK_X - 5, BLOCK_TOP + 4, 10, HEAD_H - 6);
+    // 金属外壳
+    ctx.fillStyle = '#90a0b0';
+    ctx.fillRect(SPARK_X - 6, BLOCK_TOP, 12, 4);
+    // 中心电极
+    ctx.fillStyle = '#e0e0e0';
+    ctx.fillRect(SPARK_X - 1.5, SPARK_Y - 3, 3, 5);
+    // 侧电极
+    ctx.fillStyle = '#d0d0d0';
+    ctx.beginPath();
+    ctx.moveTo(SPARK_X - 7, SPARK_Y + 2);
+    ctx.lineTo(SPARK_X - 2, SPARK_Y + 2);
+    ctx.lineTo(SPARK_X - 2, SPARK_Y - 1);
+    ctx.lineTo(SPARK_X - 7, SPARK_Y - 1);
+    ctx.fill();
+}
+
+function drawPiston(pinY, pistonTop) {
+    const x1 = PISTON_X1;
+    const x2 = PISTON_X2;
+    const y1 = pistonTop;
+    const y2 = pinY;
+
+    // 活塞主体渐变
+    const grad = ctx.createLinearGradient(x1, y1, x2, y1);
+    grad.addColorStop(0, '#a0aab4');
+    grad.addColorStop(0.45, '#d0d8e0');
+    grad.addColorStop(0.55, '#d0d8e0');
+    grad.addColorStop(1, '#909aa4');
+    ctx.fillStyle = grad;
+    ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+
+    // 活塞顶面
+    ctx.fillStyle = '#c0c8d0';
+    ctx.fillRect(x1, y1, x2 - x1, 4);
+
+    // 活塞环槽 + 环 (剖面)
+    for (let i = 0; i < 3; i++) {
+        const ry = y1 + 7 + i * 6;
+        ctx.fillStyle = '#3a4a5a';
+        ctx.fillRect(x1 + 1, ry, x2 - x1 - 2, 2.5);
+        ctx.fillStyle = '#8090a0';
+        ctx.fillRect(x1 + 2, ry, 5, 2.5);
+        ctx.fillRect(x2 - 7, ry, 5, 2.5);
+    }
+
+    // 活塞销 (剖面小圆)
+    ctx.fillStyle = '#88949e';
+    ctx.beginPath();
+    ctx.arc(CX, pinY - 4, 5.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#68747e';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+function drawRod(crankPinX, crankPinY, pinY) {
+    const rodTopX = CX;
+    const rodTopY = pinY - 4;
+
+    // 连杆杆身
+    ctx.strokeStyle = '#5e6a76';
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(rodTopX, rodTopY);
+    ctx.lineTo(crankPinX, crankPinY);
+    ctx.stroke();
+    ctx.lineCap = 'butt';
+
+    // 连杆小头
+    ctx.fillStyle = '#7a8692';
+    ctx.beginPath();
+    ctx.arc(rodTopX, rodTopY, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#5a6672';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 连杆大头外圈
+    ctx.fillStyle = '#7a8692';
+    ctx.beginPath();
+    ctx.arc(crankPinX, crankPinY, 17, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#5a6672';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 轴瓦间隙
+    ctx.fillStyle = '#4e5a66';
+    ctx.beginPath();
+    ctx.arc(crankPinX, crankPinY, 9, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawCrankshaft(angleRad, crankPinX, crankPinY) {
+    // 主轴颈
+    ctx.fillStyle = '#4a545e';
+    ctx.beginPath();
+    ctx.arc(CX, CY, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#3a444e';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // 曲柄臂
+    const dx = crankPinX - CX;
+    const dy = crankPinY - CY;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const nx = -dy / dist;
+    const ny = dx / dist;
+    const armW = 16;
+
+    ctx.fillStyle = '#565f6a';
+    ctx.beginPath();
+    ctx.moveTo(CX + nx * armW, CY + ny * armW);
+    ctx.lineTo(crankPinX + nx * armW, crankPinY + ny * armW);
+    ctx.lineTo(crankPinX - nx * armW, crankPinY - ny * armW);
+    ctx.lineTo(CX - nx * armW, CY - ny * armW);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#3e4852';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // 配重 (曲柄臂对面)
+    const cwAngle = angleRad + Math.PI;
+    const cwDist = CRANK_R + 28;
+    const cwX = CX + cwDist * Math.sin(cwAngle);
+    const cwY = CY - cwDist * Math.cos(cwAngle);
+    ctx.save();
+    ctx.translate(cwX, cwY);
+    ctx.rotate(cwAngle);
+    ctx.fillStyle = '#454e58';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 32, 20, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#323a44';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+
+    // 曲柄销
+    ctx.fillStyle = '#68727c';
+    ctx.beginPath();
+    ctx.arc(crankPinX, crankPinY, 10, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function drawCrank(angleRad) {
+    // 主轴延伸段
+    ctx.strokeStyle = '#4a545e';
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.moveTo(CX + 16, CY);
+    ctx.lineTo(FLYWHEEL_CX - FLYWHEEL_R - 4, CY);
+    ctx.stroke();
+
+    // 飞轮
+    ctx.fillStyle = '#3a4450';
+    ctx.beginPath();
+    ctx.arc(FLYWHEEL_CX, CY, FLYWHEEL_R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#252e38';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // 飞轮边缘
+    ctx.strokeStyle = '#505a66';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(FLYWHEEL_CX, CY, FLYWHEEL_R - 6, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // 飞轮旋转标记
+    ctx.save();
+    ctx.translate(FLYWHEEL_CX, CY);
+    ctx.rotate(angleRad);
+    ctx.strokeStyle = '#6b7682';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(0, -(FLYWHEEL_R - 12));
+        ctx.stroke();
+        ctx.rotate(Math.PI / 4);
+    }
+    ctx.restore();
+
+    // 旋转方向箭头 (在飞轮右侧)
+    const arrowX = FLYWHEEL_CX + FLYWHEEL_R + 18;
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(arrowX, CY, 14, -Math.PI * 0.7, Math.PI * 0.7);
+    ctx.stroke();
+    // 箭头尖端
+    ctx.beginPath();
+    ctx.moveTo(arrowX + 10, CY - 10);
+    ctx.lineTo(arrowX + 14, CY - 4);
+    ctx.lineTo(arrowX + 6, CY - 4);
+    ctx.fillStyle = '#64748b';
+    ctx.fill();
+}
+
+function drawLabels() {
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText('气缸', CYL_OUT_R + 55, CYL_HEAD_TOP + 18);
+    ctx.fillText('活塞', CYL_OUT_R + 55, TDC_PISTON_TOP + 30);
+    ctx.fillText('连杆', CX + 85, CY - 30);
+    ctx.fillText('曲轴', CX + 85, CY + 6);
+    ctx.fillText('进气阀', INTAKE_VALVE_X - 18, BLOCK_TOP - 8);
+    ctx.fillText('排气阀', EXHAUST_VALVE_X + 48, BLOCK_TOP - 8);
+    ctx.textAlign = 'left';
+    ctx.fillText('火花塞', SPARK_X + 12, SPARK_Y + 2);
+    ctx.fillText('飞轮', FLYWHEEL_CX + FLYWHEEL_R + 10, CY + 4);
+
+    // TDC / BDC 标记
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#64748b';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('上止点 TDC', CX - 55, TDC_PISTON_TOP + 4);
+    ctx.fillText('下止点 BDC', CX - 55, TDC_PISTON_TOP + 2 * CRANK_R + 4);
+    ctx.strokeStyle = '#334155';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(CX - 35, TDC_PISTON_TOP);
+    ctx.lineTo(CX + 5, TDC_PISTON_TOP);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(CX - 35, TDC_PISTON_TOP + 2 * CRANK_R);
+    ctx.lineTo(CX + 5, TDC_PISTON_TOP + 2 * CRANK_R);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function updateUI(angleDeg) {
+    const stroke = getStroke(angleDeg);
+    document.querySelectorAll('.stroke-item').forEach(el => el.classList.remove('active'));
+    const activeEl = document.getElementById('st-' + stroke);
+    if (activeEl) activeEl.classList.add('active');
+    document.getElementById('angleDisplay').textContent = Math.floor(angleDeg) + '°';
+}
+
+function draw() {
+    const angleRad = crankAngle * Math.PI / 180;
+    const pos = getPistonPos(angleRad);
+    const angleDeg = ((crankAngle % 720) + 720) % 720;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // 背景淡网格
+    ctx.strokeStyle = '#111a2e';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < canvas.width; x += 50) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+    }
+    for (let y = 0; y < canvas.height; y += 50) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+    }
+
+    // 绘制顺序 (从后到前)
+    drawGas(pos.pistonTop, angleDeg);
+    drawEngineBlock();
+    drawValves(angleDeg);
+    drawSparkPlug();
+    drawCrankshaft(angleRad, pos.crankPinX, pos.crankPinY);
+    drawCrank(angleRad);
+    drawRod(pos.crankPinX, pos.crankPinY, pos.pinY);
+    drawPiston(pos.pinY, pos.pistonTop);
+    drawLabels();
+
+    // 画布内冲程名称
+    const gasInfo = getGasColor(angleDeg);
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(gasInfo.name + '冲程', CX, 34);
+    ctx.font = '12px sans-serif';
+    ctx.fillStyle = '#64748b';
+    ctx.fillText('四冲程循环 (0°-720°)', CX, 52);
+
+    updateUI(angleDeg);
+}
+
+function animate(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    const dt = timestamp - lastTime;
+    lastTime = timestamp;
+
+    crankAngle += rpm * 6 * dt / 1000;
+    crankAngle = crankAngle % 720;
+
+    draw();
+    requestAnimationFrame(animate);
+}
+
+// RPM 控制
+const rpmSlider = document.getElementById('rpmSlider');
+const rpmValue = document.getElementById('rpmValue');
+rpmSlider.addEventListener('input', (e) => {
+    rpm = parseInt(e.target.value);
+    rpmValue.textContent = rpm + ' RPM';
+});
+
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>

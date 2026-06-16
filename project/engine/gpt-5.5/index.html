@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>四冲程活塞发动机剖面动画</title>
+  <style>
+    :root {
+      --bg: #0d1420;
+      --panel: rgba(15, 23, 42, 0.88);
+      --line: #d8dee9;
+      --metal-1: #d6d9de;
+      --metal-2: #7f8793;
+      --metal-3: #434b57;
+      --blue: #38bdf8;
+      --blue-dark: #075985;
+      --fire: #f97316;
+      --fire-2: #fde047;
+      --exhaust: #9ca3af;
+      --green: #22c55e;
+      --red: #ef4444;
+      --text: #e5edf7;
+      --muted: #93a4b8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(56, 189, 248, 0.18), transparent 32%),
+        radial-gradient(circle at 85% 25%, rgba(249, 115, 22, 0.14), transparent 30%),
+        linear-gradient(135deg, #070b12 0%, #0d1420 52%, #101827 100%);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", Arial, sans-serif;
+      color: var(--text);
+      overflow-x: hidden;
+    }
+
+    .wrap {
+      width: min(1160px, 96vw);
+      padding: 22px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 18px;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(24px, 3vw, 38px);
+      letter-spacing: 0.02em;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin-top: 6px;
+      font-size: 14px;
+    }
+
+    .speedBox {
+      min-width: 260px;
+      padding: 12px 14px;
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      border-radius: 16px;
+      background: rgba(15, 23, 42, 0.7);
+      box-shadow: 0 20px 45px rgba(0,0,0,0.22);
+    }
+
+    .speedBox label {
+      display: flex;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 13px;
+      margin-bottom: 8px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    .stage {
+      position: relative;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 24px;
+      background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.92));
+      box-shadow: 0 28px 80px rgba(0,0,0,0.38);
+      overflow: hidden;
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(148, 163, 184, 0.07) 1px, transparent 1px);
+      background-size: 34px 34px;
+      mask-image: radial-gradient(circle at 50% 45%, #000 0 55%, transparent 85%);
+      pointer-events: none;
+    }
+
+    svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      min-height: 620px;
+    }
+
+    .legend {
+      position: absolute;
+      left: 22px;
+      bottom: 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--muted);
+      pointer-events: none;
+    }
+
+    .pill {
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.78);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      backdrop-filter: blur(8px);
+    }
+
+    .dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      margin-right: 6px;
+      border-radius: 50%;
+      vertical-align: -1px;
+    }
+
+    .panel {
+      filter: drop-shadow(0 20px 20px rgba(0,0,0,.25));
+    }
+
+    .label {
+      fill: #e5edf7;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+
+    .smallLabel {
+      fill: #9fb0c5;
+      font-size: 12px;
+    }
+
+    .tickText {
+      fill: #cbd5e1;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .strokeCard {
+      opacity: 0.4;
+      transition: opacity .25s ease, filter .25s ease;
+    }
+
+    .strokeCard.active {
+      opacity: 1;
+      filter: drop-shadow(0 0 12px rgba(56,189,248,.28));
+    }
+
+    .metalStroke {
+      stroke: #d9dee7;
+      stroke-width: 4;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+    }
+
+    .softMetal {
+      fill: url(#metalGrad);
+      stroke: #e7ebf1;
+      stroke-width: 3;
+    }
+
+    .darkMetal {
+      fill: url(#darkMetalGrad);
+      stroke: #aab2bf;
+      stroke-width: 3;
+    }
+
+    .valve {
+      transition: transform .12s linear;
+    }
+
+    .arrowDash {
+      stroke-dasharray: 10 10;
+      animation: dash 0.7s linear infinite;
+    }
+
+    @keyframes dash {
+      to { stroke-dashoffset: -20; }
+    }
+
+    .glowBlue {
+      filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.85));
+    }
+
+    .glowFire {
+      filter: drop-shadow(0 0 14px rgba(251, 146, 60, 0.95));
+    }
+
+    .flame {
+      transform-origin: 450px 250px;
+      opacity: 0;
+    }
+
+    .spark {
+      opacity: 0;
+      filter: drop-shadow(0 0 12px rgba(250, 204, 21, .95));
+    }
+
+    .exhaustPuff {
+      opacity: 0;
+      filter: blur(.4px);
+    }
+
+    .mathNote {
+      fill: #8aa0b8;
+      font-size: 12px;
+    }
+
+    @media (max-width: 800px) {
+      .header { align-items: stretch; flex-direction: column; }
+      .speedBox { min-width: unset; }
+      svg { min-height: 560px; }
+      .legend { position: static; padding: 0 18px 18px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="header">
+      <div>
+        <h1>四冲程活塞发动机剖面动画</h1>
+        <div class="subtitle">进气 → 压缩 → 动力 → 排气；曲轴转两圈完成一个工作循环，活塞由精确连杆几何驱动。</div>
+      </div>
+      <div class="speedBox">
+        <label>
+          <span>转速</span>
+          <strong><span id="rpmText">900</span> RPM</strong>
+        </label>
+        <input id="speed" type="range" min="0.45" max="2.4" value="1" step="0.01" />
+      </div>
+    </div>
+
+    <section class="stage">
+      <svg id="engine" viewBox="0 0 1000 720" role="img" aria-label="四冲程活塞发动机剖面动画">
+        <defs>
+          <linearGradient id="metalGrad" x1="0" x2="1">
+            <stop offset="0%" stop-color="#f5f7fb"/>
+            <stop offset="30%" stop-color="#aab2bf"/>
+            <stop offset="60%" stop-color="#eef2f7"/>
+            <stop offset="100%" stop-color="#7b8492"/>
+          </linearGradient>
+          <linearGradient id="darkMetalGrad" x1="0" x2="1">
+            <stop offset="0%" stop-color="#64748b"/>
+            <stop offset="55%" stop-color="#1f2937"/>
+            <stop offset="100%" stop-color="#9ca3af"/>
+          </linearGradient>
+          <linearGradient id="gasGrad" x1="0" x2="0" y1="0" y2="1">
+            <stop id="gasStop1" offset="0%" stop-color="#38bdf8" stop-opacity="0.82"/>
+            <stop id="gasStop2" offset="100%" stop-color="#0ea5e9" stop-opacity="0.18"/>
+          </linearGradient>
+          <radialGradient id="fireGrad" cx="50%" cy="35%" r="70%">
+            <stop offset="0%" stop-color="#fef08a"/>
+            <stop offset="45%" stop-color="#fb923c"/>
+            <stop offset="100%" stop-color="#dc2626"/>
+          </radialGradient>
+          <filter id="shadow" x="-40%" y="-40%" width="180%" height="180%">
+            <feDropShadow dx="0" dy="12" stdDeviation="10" flood-color="#000" flood-opacity=".38"/>
+          </filter>
+          <clipPath id="cylClip">
+            <rect x="338" y="224" width="224" height="280" rx="16"/>
+          </clipPath>
+          <clipPath id="fireClip">
+            <rect x="345" y="222" width="210" height="105" rx="16"/>
+          </clipPath>
+        </defs>
+
+        <!-- information panel -->
+        <g class="panel">
+          <rect x="638" y="78" width="300" height="248" rx="24" fill="rgba(15,23,42,.72)" stroke="rgba(148,163,184,.28)"/>
+          <text x="662" y="116" class="label">当前冲程</text>
+          <text id="phaseName" x="662" y="154" fill="#38bdf8" font-size="30" font-weight="900">进气</text>
+          <text id="phaseDesc" x="662" y="184" fill="#cbd5e1" font-size="14">进气门打开，活塞下行吸入空气。</text>
+
+          <g id="cards" transform="translate(662 214)">
+            <g id="card0" class="strokeCard active">
+              <rect x="0" y="0" width="250" height="23" rx="11" fill="rgba(56,189,248,.15)" stroke="rgba(56,189,248,.45)"/>
+              <circle cx="13" cy="11.5" r="5" fill="#38bdf8"/><text x="28" y="16" class="tickText">1 进气 Intake</text>
+            </g>
+            <g id="card1" class="strokeCard" transform="translate(0 31)">
+              <rect x="0" y="0" width="250" height="23" rx="11" fill="rgba(125,211,252,.10)" stroke="rgba(125,211,252,.35)"/>
+              <circle cx="13" cy="11.5" r="5" fill="#7dd3fc"/><text x="28" y="16" class="tickText">2 压缩 Compression</text>
+            </g>
+            <g id="card2" class="strokeCard" transform="translate(0 62)">
+              <rect x="0" y="0" width="250" height="23" rx="11" fill="rgba(249,115,22,.15)" stroke="rgba(249,115,22,.45)"/>
+              <circle cx="13" cy="11.5" r="5" fill="#f97316"/><text x="28" y="16" class="tickText">3 动力 Power</text>
+            </g>
+            <g id="card3" class="strokeCard" transform="translate(0 93)">
+              <rect x="0" y="0" width="250" height="23" rx="11" fill="rgba(156,163,175,.15)" stroke="rgba(156,163,175,.45)"/>
+              <circle cx="13" cy="11.5" r="5" fill="#9ca3af"/><text x="28" y="16" class="tickText">4 排气 Exhaust</text>
+            </g>
+          </g>
+        </g>
+
+        <!-- labels -->
+        <text x="108" y="102" class="smallLabel">蓝色：进气空气</text>
+        <text x="108" y="126" class="smallLabel">橙/黄色：燃烧火焰</text>
+        <text x="108" y="150" class="smallLabel">灰色：排气</text>
+
+        <!-- engine body and cylinder -->
+        <g id="body" filter="url(#shadow)">
+          <path d="M286 184 Q286 154 316 154 H584 Q614 154 614 184 V518 Q614 542 590 550 H310 Q286 542 286 518 Z"
+                fill="rgba(71,85,105,.45)" stroke="rgba(226,232,240,.72)" stroke-width="4"/>
+          <path d="M334 219 H566 V510 H334 Z" fill="rgba(2,6,23,.55)" stroke="#dbe2ec" stroke-width="7"/>
+          <path d="M352 225 H372 V505 H352 Z" fill="rgba(255,255,255,.12)"/>
+          <path d="M528 225 H548 V505 H528 Z" fill="rgba(255,255,255,.08)"/>
+          <rect x="338" y="224" width="224" height="280" rx="14" fill="rgba(15,23,42,.42)" stroke="rgba(226,232,240,.32)" stroke-width="2"/>
+          <path d="M340 215 H560 Q580 215 585 195 L592 166 H308 L315 195 Q320 215 340 215Z"
+                fill="url(#darkMetalGrad)" stroke="#dbe2ec" stroke-width="4"/>
+          <text x="252" y="364" class="label" transform="rotate(-90 252 364)">气缸剖面</text>
+        </g>
+
+        <!-- gas volume inside cylinder -->
+        <g clip-path="url(#cylClip)">
+          <rect id="gasRect" x="345" y="236" width="210" height="170" rx="8" fill="url(#gasGrad)" opacity=".85"/>
+          <g id="airSwirl" opacity="1">
+            <path d="M382 308 C430 278 474 350 522 312" fill="none" stroke="#7dd3fc" stroke-width="4" stroke-linecap="round" class="arrowDash glowBlue"/>
+            <path d="M390 360 C432 330 478 395 514 360" fill="none" stroke="#bae6fd" stroke-width="3" stroke-linecap="round" class="arrowDash glowBlue"/>
+          </g>
+          <g id="flames" clip-path="url(#fireClip)" class="flame glowFire">
+            <path d="M396 316 C368 266 418 250 406 220 C450 248 426 279 450 314 C466 284 510 256 498 220 C554 278 540 316 506 342 C470 372 423 356 396 316Z"
+                  fill="url(#fireGrad)"/>
+            <path d="M432 330 C410 292 449 280 442 250 C474 276 464 298 486 331 C465 350 444 352 432 330Z"
+                  fill="#fef08a" opacity=".9"/>
+          </g>
+        </g>
+
+        <!-- intake and exhaust manifolds -->
+        <g id="intake">
+          <path d="M88 258 H234 Q258 258 274 242 L319 198" fill="none" stroke="#0ea5e9" stroke-width="30" stroke-linecap="round"/>
+          <path d="M88 258 H234 Q258 258 274 242 L319 198" fill="none" stroke="#7dd3fc" stroke-width="7" stroke-linecap="round" class="arrowDash"/>
+          <text x="86" y="218" fill="#7dd3fc" font-size="16" font-weight="800">进气</text>
+        </g>
+
+        <g id="exhaust">
+          <path d="M581 198 L626 242 Q642 258 666 258 H806" fill="none" stroke="#6b7280" stroke-width="30" stroke-linecap="round"/>
+          <path d="M581 198 L626 242 Q642 258 666 258 H806" fill="none" stroke="#cbd5e1" stroke-width="7" stroke-linecap="round" class="arrowDash"/>
+          <text x="760" y="218" fill="#d1d5db" font-size="16" font-weight="800">排气</text>
+          <circle id="puff1" class="exhaustPuff" cx="832" cy="248" r="15" fill="#9ca3af"/>
+          <circle id="puff2" class="exhaustPuff" cx="870" cy="269" r="22" fill="#737373"/>
+          <circle id="puff3" class="exhaustPuff" cx="904" cy="240" r="13" fill="#d1d5db"/>
+        </g>
+
+        <!-- valves -->
+        <g id="valves">
+          <g id="intakeValve" class="valve">
+            <line x1="374" y1="156" x2="406" y2="219" stroke="#dbe2ec" stroke-width="8" stroke-linecap="round"/>
+            <ellipse cx="409" cy="222" rx="30" ry="9" transform="rotate(24 409 222)" fill="#cbd5e1" stroke="#f8fafc" stroke-width="2"/>
+          </g>
+          <g id="exhaustValve" class="valve">
+            <line x1="526" y1="156" x2="494" y2="219" stroke="#dbe2ec" stroke-width="8" stroke-linecap="round"/>
+            <ellipse cx="491" cy="222" rx="30" ry="9" transform="rotate(-24 491 222)" fill="#cbd5e1" stroke="#f8fafc" stroke-width="2"/>
+          </g>
+          <text x="320" y="147" class="smallLabel">进气门</text>
+          <text x="529" y="147" class="smallLabel">排气门</text>
+        </g>
+
+        <!-- spark plug -->
+        <g id="sparkPlug">
+          <path d="M451 153 v62" stroke="#f8fafc" stroke-width="9" stroke-linecap="round"/>
+          <path d="M440 169 h22 M439 184 h24" stroke="#64748b" stroke-width="4" stroke-linecap="round"/>
+          <path id="spark" class="spark" d="M450 222 l-13 20 l18 -8 l-7 22 l22 -30 l-17 7 z" fill="#fde047"/>
+          <text x="462" y="174" class="smallLabel">火花塞</text>
+        </g>
+
+        <!-- crankcase -->
+        <path d="M255 496 Q252 470 280 470 H620 Q648 470 645 496 L622 664 Q618 690 590 690 H310 Q282 690 278 664Z"
+              fill="rgba(30,41,59,.72)" stroke="rgba(226,232,240,.58)" stroke-width="4"/>
+        <text x="660" y="620" class="mathNote">活塞销 y = 曲柄销 y - √(连杆² - 水平偏移²)</text>
+        <text x="660" y="640" class="mathNote">曲轴每转 720° 完成四个冲程，无缝循环。</text>
+
+        <!-- moving parts -->
+        <g id="moving">
+          <line id="rodShadow" x1="450" y1="300" x2="450" y2="533" stroke="rgba(0,0,0,.45)" stroke-width="24" stroke-linecap="round"/>
+          <line id="rod" x1="450" y1="300" x2="450" y2="533" stroke="url(#metalGrad)" stroke-width="18" stroke-linecap="round"/>
+          <line id="rodCore" x1="450" y1="300" x2="450" y2="533" stroke="rgba(30,41,59,.45)" stroke-width="5" stroke-linecap="round"/>
+
+          <line id="crankArm" x1="450" y1="605" x2="450" y2="533" stroke="#cbd5e1" stroke-width="16" stroke-linecap="round"/>
+          <circle cx="450" cy="605" r="84" fill="none" stroke="rgba(226,232,240,.32)" stroke-width="20"/>
+          <circle cx="450" cy="605" r="47" fill="rgba(15,23,42,.9)" stroke="#cbd5e1" stroke-width="8"/>
+          <circle id="crankPin" cx="450" cy="533" r="17" fill="#f8fafc" stroke="#64748b" stroke-width="5"/>
+          <circle cx="450" cy="605" r="13" fill="#e5e7eb" stroke="#64748b" stroke-width="4"/>
+
+          <g id="piston">
+            <rect id="pistonBody" x="371" y="0" width="158" height="66" rx="12" fill="url(#metalGrad)" stroke="#f8fafc" stroke-width="4"/>
+            <rect id="ring1" x="378" y="12" width="144" height="6" rx="3" fill="#293241"/>
+            <rect id="ring2" x="378" y="28" width="144" height="6" rx="3" fill="#293241"/>
+            <rect id="ring3" x="378" y="44" width="144" height="6" rx="3" fill="#293241"/>
+            <circle id="wristPin" cx="450" cy="40" r="18" fill="#111827" stroke="#e5e7eb" stroke-width="6"/>
+            <text id="pistonText" x="450" y="90" text-anchor="middle" class="smallLabel">活塞</text>
+          </g>
+        </g>
+
+        <!-- gauges -->
+        <g transform="translate(90 500)">
+          <rect x="0" y="0" width="180" height="96" rx="18" fill="rgba(15,23,42,.72)" stroke="rgba(148,163,184,.24)"/>
+          <text x="18" y="30" class="smallLabel">曲轴角</text>
+          <text id="angleText" x="18" y="62" fill="#e5edf7" font-size="28" font-weight="900">0°</text>
+          <text x="18" y="82" class="smallLabel">720° 循环</text>
+        </g>
+
+        <g transform="translate(90 620)">
+          <rect x="0" y="0" width="518" height="16" rx="8" fill="rgba(148,163,184,.18)"/>
+          <rect id="progressBar" x="0" y="0" width="0" height="16" rx="8" fill="#38bdf8"/>
+          <text x="0" y="40" class="smallLabel">0° TDC</text>
+          <text x="121" y="40" class="smallLabel">180° BDC</text>
+          <text x="247" y="40" class="smallLabel">360° TDC</text>
+          <text x="377" y="40" class="smallLabel">540° BDC</text>
+          <text x="485" y="40" class="smallLabel">720°</text>
+        </g>
+      </svg>
+
+      <div class="legend">
+        <span class="pill"><span class="dot" style="background:#38bdf8"></span>蓝色：进气空气</span>
+        <span class="pill"><span class="dot" style="background:#f97316"></span>橙黄：燃烧/动力冲程</span>
+        <span class="pill"><span class="dot" style="background:#9ca3af"></span>灰色：排气</span>
+        <span class="pill"><span class="dot" style="background:#e5e7eb"></span>白银色：机械部件</span>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const $ = (id) => document.getElementById(id);
+
+      // Geometry in SVG pixels.
+      // Crank angle 0° = piston at TDC. 180° = BDC.
+      // A four-stroke cycle uses 720° crank rotation.
+      const CX = 450;
+      const CRANK_Y = 605;
+      const CRANK_R = 72;
+      const ROD_L = 230;
+      const PISTON_PIN_OFFSET = 40;
+      const CHAMBER_TOP = 236;
+      const CYL_X = 345;
+      const CYL_W = 210;
+
+      const els = {
+        piston: $("piston"),
+        rod: $("rod"),
+        rodCore: $("rodCore"),
+        rodShadow: $("rodShadow"),
+        crankArm: $("crankArm"),
+        crankPin: $("crankPin"),
+        gasRect: $("gasRect"),
+        gasStop1: $("gasStop1"),
+        gasStop2: $("gasStop2"),
+        airSwirl: $("airSwirl"),
+        flames: $("flames"),
+        spark: $("spark"),
+        phaseName: $("phaseName"),
+        phaseDesc: $("phaseDesc"),
+        angleText: $("angleText"),
+        progressBar: $("progressBar"),
+        intakeValve: $("intakeValve"),
+        exhaustValve: $("exhaustValve"),
+        puff1: $("puff1"),
+        puff2: $("puff2"),
+        puff3: $("puff3"),
+        speed: $("speed"),
+        rpmText: $("rpmText"),
+        cards: [0, 1, 2, 3].map(i => $("card" + i))
+      };
+
+      const phases = [
+        {
+          name: "进气",
+          color: "#38bdf8",
+          fill1: "#38bdf8",
+          fill2: "#0ea5e9",
+          desc: "进气门打开，活塞下行吸入蓝色空气。"
+        },
+        {
+          name: "压缩",
+          color: "#7dd3fc",
+          fill1: "#93c5fd",
+          fill2: "#1d4ed8",
+          desc: "两阀关闭，活塞上行压缩缸内混合气。"
+        },
+        {
+          name: "动力",
+          color: "#f97316",
+          fill1: "#f97316",
+          fill2: "#facc15",
+          desc: "火花点燃混合气，燃烧膨胀推动活塞下行。"
+        },
+        {
+          name: "排气",
+          color: "#9ca3af",
+          fill1: "#d1d5db",
+          fill2: "#6b7280",
+          desc: "排气门打开，活塞上行把灰色废气推出。"
+        }
+      ];
+
+      let start = performance.now();
+      let lastPhase = -1;
+
+      function clamp(v, a, b) {
+        return Math.max(a, Math.min(b, v));
+      }
+
+      function setLine(line, x1, y1, x2, y2) {
+        line.setAttribute("x1", x1.toFixed(2));
+        line.setAttribute("y1", y1.toFixed(2));
+        line.setAttribute("x2", x2.toFixed(2));
+        line.setAttribute("y2", y2.toFixed(2));
+      }
+
+      function smoothPulse(x, start, end) {
+        // Returns 0..1..0 inside interval.
+        const t = clamp((x - start) / (end - start), 0, 1);
+        return Math.sin(Math.PI * t);
+      }
+
+      function animate(now) {
+        const speed = Number(els.speed.value);
+        const rpm = Math.round(900 * speed);
+        els.rpmText.textContent = rpm;
+
+        // One full four-stroke cycle lasts 5.6 s at speed=1.
+        const cycleMs = 5600 / speed;
+        const elapsed = (now - start) % cycleMs;
+        const cycle = elapsed / cycleMs;
+        const angle720 = cycle * 720;
+        const theta = angle720 * Math.PI / 180; // actual crank rotation angle
+
+        // Exact slider-crank geometry:
+        // crank pin = (r sinθ, -r cosθ)
+        // piston wrist pin stays on cylinder centerline x=CX.
+        // rod length is fixed: L² = dx² + dy².
+        const crankX = CX + CRANK_R * Math.sin(theta);
+        const crankPinY = CRANK_Y - CRANK_R * Math.cos(theta);
+        const dx = crankX - CX;
+        const wristY = crankPinY - Math.sqrt(ROD_L * ROD_L - dx * dx);
+        const pistonTop = wristY - PISTON_PIN_OFFSET;
+
+        // Moving parts
+        els.piston.setAttribute("transform", `translate(0 ${pistonTop.toFixed(2)})`);
+        [els.rod, els.rodCore, els.rodShadow].forEach(line => setLine(line, CX, wristY, crankX, crankPinY));
+        setLine(els.crankArm, CX, CRANK_Y, crankX, crankPinY);
+        els.crankPin.setAttribute("cx", crankX.toFixed(2));
+        els.crankPin.setAttribute("cy", crankPinY.toFixed(2));
+
+        // Stroke phase: 0 intake, 1 compression, 2 power, 3 exhaust.
+        const phaseIndex = Math.floor(angle720 / 180) % 4;
+        const local = (angle720 % 180) / 180;
+        const p = phases[phaseIndex];
+
+        if (phaseIndex !== lastPhase) {
+          lastPhase = phaseIndex;
+          els.cards.forEach((card, i) => card.classList.toggle("active", i === phaseIndex));
+          els.phaseName.textContent = p.name;
+          els.phaseDesc.textContent = p.desc;
+          els.phaseName.setAttribute("fill", p.color);
+        }
+
+        // Gas height follows piston top and stays clipped inside cylinder.
+        const gasY = CHAMBER_TOP;
+        const gasH = Math.max(5, pistonTop - CHAMBER_TOP + 7);
+        els.gasRect.setAttribute("x", CYL_X);
+        els.gasRect.setAttribute("width", CYL_W);
+        els.gasRect.setAttribute("y", gasY.toFixed(2));
+        els.gasRect.setAttribute("height", gasH.toFixed(2));
+
+        // Colors by stroke.
+        els.gasStop1.setAttribute("stop-color", p.fill1);
+        els.gasStop2.setAttribute("stop-color", p.fill2);
+        els.gasRect.style.opacity = phaseIndex === 2 ? 0.55 : phaseIndex === 3 ? 0.72 : 0.82;
+
+        // Valve motion. Translation follows the valve stem direction visually.
+        const intakeOpen = phaseIndex === 0 ? 1 : 0;
+        const exhaustOpen = phaseIndex === 3 ? 1 : 0;
+        els.intakeValve.style.transform = `translate(${(intakeOpen * 12).toFixed(1)}px, ${(intakeOpen * 18).toFixed(1)}px)`;
+        els.exhaustValve.style.transform = `translate(${(-exhaustOpen * 12).toFixed(1)}px, ${(exhaustOpen * 18).toFixed(1)}px)`;
+
+        // Air swirl, flame and spark.
+        els.airSwirl.style.opacity = phaseIndex === 0 ? 0.95 : phaseIndex === 1 ? (0.55 * (1 - local)) : 0.05;
+
+        const flameStrength = phaseIndex === 2 ? Math.max(0, 1 - local * 0.75) : 0;
+        const flameScale = 0.74 + 0.36 * Math.sin(local * Math.PI);
+        els.flames.style.opacity = flameStrength.toFixed(3);
+        els.flames.style.transform = `scale(${flameScale.toFixed(3)})`;
+
+        const sparkOpacity = phaseIndex === 2 ? smoothPulse(local, 0.0, 0.22) : 0;
+        els.spark.style.opacity = sparkOpacity.toFixed(3);
+
+        // Exhaust puffs during exhaust stroke.
+        const exhaustBase = phaseIndex === 3 ? Math.sin(local * Math.PI) : 0;
+        [els.puff1, els.puff2, els.puff3].forEach((puff, i) => {
+          const delay = i * 0.18;
+          const t = (local + delay) % 1;
+          const op = phaseIndex === 3 ? (0.12 + 0.55 * exhaustBase) * (1 - t * 0.55) : 0;
+          const drift = phaseIndex === 3 ? t * (52 + i * 14) : 0;
+          const grow = 1 + t * 0.9;
+          puff.style.opacity = op.toFixed(3);
+          puff.setAttribute("transform", `translate(${drift.toFixed(1)} 0) scale(${grow.toFixed(2)})`);
+        });
+
+        // UI readouts
+        els.angleText.textContent = `${Math.round(angle720)}°`;
+        els.progressBar.setAttribute("width", (518 * cycle).toFixed(2));
+        els.progressBar.setAttribute("fill", p.color);
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+    })();
+  </script>
+</body>
+</html>
