@@ -369,8 +369,8 @@ main.layout-focus { grid-template-columns: 1fr; }
   <div class="controls">
     <span style="font-size:11px;color:var(--text-dim);margin-right:4px;">布局</span>
     <div class="btn-group" id="layoutGroup">
-      <button class="btn" data-layout="ab">A/B</button>
-      <button class="btn active" data-layout="2">2列</button>
+      <button class="btn active" data-layout="ab">A/B</button>
+      <button class="btn" data-layout="2">2列</button>
       <button class="btn" data-layout="3">3列</button>
       <button class="btn" data-layout="4">4列</button>
       <button class="btn" data-layout="focus">焦点</button>
@@ -417,7 +417,7 @@ function getModelMeta(id) {
 const state = {
   projects: [],
   currentProjectId: null,
-  layout: '2',
+  layout: 'ab',
   focusId: null,
   activeModels: new Set(),
 };
@@ -464,11 +464,11 @@ function buildProjectTabs() {
       if (p.id === state.currentProjectId) return;
       state.currentProjectId = p.id;
       state.focusId = null;
-      state.activeModels = new Set(p.models.map(m => m.id));
-      // Reset layout to 2-col when switching project
-      state.layout = '2';
+      state.activeModels = new Set(p.models.slice(0, 2).map(m => m.id));
+      // Reset layout to ab when switching project
+      state.layout = 'ab';
       document.querySelectorAll('#layoutGroup .btn').forEach(b => b.classList.remove('active'));
-      document.querySelector('#layoutGroup .btn[data-layout="2"]').classList.add('active');
+      document.querySelector('#layoutGroup .btn[data-layout="ab"]').classList.add('active');
       buildProjectTabs();
       render();
     };
@@ -663,10 +663,10 @@ document.addEventListener('keydown', (e) => {
   }
 
   if (e.key === 'Escape' && state.layout === 'focus') {
-    state.layout = '2';
+    state.layout = 'ab';
     state.focusId = null;
     document.querySelectorAll('#layoutGroup .btn').forEach(b => b.classList.remove('active'));
-    document.querySelector('#layoutGroup .btn[data-layout="2"]').classList.add('active');
+    document.querySelector('#layoutGroup .btn[data-layout="ab"]').classList.add('active');
     render();
   }
 
@@ -694,7 +694,7 @@ async function init() {
 
     state.projects = projects;
     state.currentProjectId = projects[0].id;
-    state.activeModels = new Set(projects[0].models.map(m => m.id));
+    state.activeModels = new Set(projects[0].models.slice(0, 2).map(m => m.id));
 
     buildProjectTabs();
     render();
