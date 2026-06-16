@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>四冲程活塞发动机剖面图</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    color: #e0e0e0;
+    overflow: hidden;
+  }
+  h1 {
+    font-size: 1.6rem;
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+    color: #f0f0f0;
+  }
+  #canvas {
+    border-radius: 12px;
+    box-shadow: 0 0 40px rgba(0,0,0,0.5);
+  }
+  .legend {
+    display: flex;
+    gap: 24px;
+    margin-top: 12px;
+    font-size: 0.95rem;
+  }
+  .legend span {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .legend .dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .stroke-label {
+    margin-top: 8px;
+    font-size: 1.3rem;
+    font-weight: bold;
+    letter-spacing: 1px;
+    min-height: 1.6em;
+    transition: color 0.3s;
+  }
+</style>
+</head>
+<body>
+<h1>四冲程活塞发动机剖面图</h1>
+<canvas id="canvas" width="600" height="700"></canvas>
+<div class="stroke-label" id="strokeLabel">进气冲程</div>
+<div class="legend">
+  <span><span class="dot" style="background:#4a9eff"></span>进气空气</span>
+  <span><span class="dot" style="background:#ff9f1c"></span>燃烧火焰</span>
+  <span><span class="dot" style="background:#8e8e8e"></span>排气废气</span>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+const strokeLabel = document.getElementById('strokeLabel');
+
+// Engine geometry
+const crankCenterX = W / 2;
+const crankCenterY = 480;
+const crankRadius = 55;
+const conRodLength = 160;
+const pistonWidth = 140;
+const pistonHeight = 50;
+const cylinderWidth = 150;
+const cylinderTop = 120;
+const cylinderWallThickness = 12;
+
+// Valve parameters
+const valveWidth = 30;
+const valveHeight = 10;
+const valveMaxLift = 18;
+
+// Stroke colors
+const INTAKE_COLOR = 'rgba(74, 158, 255, 0.35)';
+const COMPRESSION_COLOR = 'rgba(200, 200, 200, 0.15)';
+const POWER_COLOR = 'rgba(255, 159, 28, 0.5)';
+const EXHAUST_COLOR = 'rgba(142, 142, 142, 0.35)';
+
+const STROKE_NAMES = ['进气冲程', '压缩冲程', '做功冲程', '排气冲程'];
+const STROKE_COLORS = ['#4a9eff', '#c8c8c8', '#ff9f1c', '#8e8e8e'];
+
+let angle = 0;
+const speed = 0.012;
+
+function getPistonY(theta) {
+  // Precise slider-crank kinematics
+  const r = crankRadius;
+  const l = conRodLength;
+  const x = r * Math.cos(theta);
+  const y = r * Math.sin(theta);
+  const pistonOffset = Math.sqrt(l * l - x * x);
+  return crankCenterY - y - pistonOffset;
+}
+
+function getStrokeIndex(theta) {
+  // 0-PI: intake, PI-2PI: compression, etc... 
+  // Actually: 4 strokes = 2 full crank rotations = 4*PI
+  // Normalize angle to [0, 4*PI)
+  let a = ((theta % (4 * Math.PI)) + 4 * Math.PI) % (4 * Math.PI);
+  if (a < Math.PI) return 0;       // Intake (piston going down)
+  if (a < 2 * Math.PI) return 1;   // Compression (piston going up)
+  if (a < 3 * Math.PI) return 2;   // Power (piston going down)
+  return 3;                         // Exhaust (piston going up)
+}
+
+function drawCylinder() {
+  const leftX = crankCenterX - cylinderWidth / 2;
+  const rightX = crankCenterX + cylinderWidth / 2;
+
+  // Cylinder walls
+  ctx.fillStyle = '#555';
+  ctx.fillRect(leftX - cylinderWallThickness, cylinderTop, cylinderWallThickness, crankCenterY - cylinderTop + 40);
+  ctx.fillRect(rightX, cylinderTop, cylinderWallThickness, crankCenterY - cylinderTop + 40);
+
+  // Cylinder head (top)
+  ctx.fillStyle = '#666';
+  ctx.fillRect(leftX - cylinderWallThickness - 10, cylinderTop - 20, cylinderWidth + cylinderWallThickness * 2 + 20, 22);
+  // Head top highlight
+  ctx.fillStyle = '#777';
+  ctx.fillRect(leftX - cylinderWallThickness - 10, cylinderTop - 20, cylinderWidth + cylinderWallThickness * 2 + 20, 5);
+
+  // Cylinder inner surface (darker)
+  ctx.fillStyle = '#2a2a3a';
+  ctx.fillRect(leftX, cylinderTop, cylinderWidth, crankCenterY - cylinderTop + 30);
+}
+
+function drawGasSpace(pistonTopY, strokeIndex, theta) {
+  const leftX = crankCenterX - cylinderWidth / 2 + 2;
+  const rightX = crankCenterX + cylinderWidth / 2 - 2;
+  const topY = cylinderTop + 2;
+  const height = pistonTopY - topY;
+
+  if (height <= 0) return;
+
+  let color;
+  switch (strokeIndex) {
+    case 0: color = INTAKE_COLOR; break;
+    case 1: color = COMPRESSION_COLOR; break;
+    case 2: color = POWER_COLOR; break;
+    case 3: color = EXHAUST_COLOR; break;
+  }
+
+  ctx.fillStyle = color;
+  ctx.fillRect(leftX, topY, rightX - leftX, height);
+
+  // Draw particles for visual effect
+  drawParticles(leftX, topY, rightX - leftX, height, strokeIndex, theta);
+}
+
+function drawParticles(x, y, w, h, strokeIndex, theta) {
+  const particleCount = 15;
+  const time = theta * 3;
+  for (let i = 0; i < particleCount; i++) {
+    const seed = i * 137.508;
+    const px = x + ((seed * 7.3 + time * 20) % w);
+    const py = y + ((seed * 13.7 + Math.sin(time + i) * 10) % h);
+    const size = 3 + Math.sin(seed + time) * 1.5;
+
+    let pColor;
+    switch (strokeIndex) {
+      case 0: pColor = `rgba(74, 158, 255, ${0.3 + Math.sin(seed + time) * 0.2})`; break;
+      case 1: pColor = `rgba(220, 220, 220, ${0.15 + Math.sin(seed + time) * 0.1})`; break;
+      case 2: pColor = `rgba(255, ${120 + Math.sin(seed + time) * 60}, 28, ${0.4 + Math.sin(seed + time) * 0.2})`; break;
+      case 3: pColor = `rgba(142, 142, 142, ${0.25 + Math.sin(seed + time) * 0.15})`; break;
+    }
+
+    ctx.beginPath();
+    ctx.arc(px, py, size, 0, Math.PI * 2);
+    ctx.fillStyle = pColor;
+    ctx.fill();
+  }
+}
+
+function drawPiston(pistonTopY) {
+  const leftX = crankCenterX - pistonWidth / 2;
+
+  // Piston body
+  const grad = ctx.createLinearGradient(leftX, pistonTopY, leftX + pistonWidth, pistonTopY);
+  grad.addColorStop(0, '#888');
+  grad.addColorStop(0.3, '#aaa');
+  grad.addColorStop(0.5, '#bbb');
+  grad.addColorStop(0.7, '#aaa');
+  grad.addColorStop(1, '#888');
+
+  ctx.fillStyle = grad;
+  ctx.fillRect(leftX, pistonTopY, pistonWidth, pistonHeight);
+
+  // Piston rings
+  ctx.fillStyle = '#666';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(leftX - 2, pistonTopY + 6 + i * 10, pistonWidth + 4, 3);
+  }
+
+  // Piston pin (wrist pin)
+  const pinY = pistonTopY + pistonHeight - 8;
+  ctx.beginPath();
+  ctx.arc(crankCenterX, pinY, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#999';
+  ctx.fill();
+  ctx.strokeStyle = '#777';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawConRod(theta, pistonTopY) {
+  const pinY = pistonTopY + pistonHeight - 8;
+  const crankPinX = crankCenterX + crankRadius * Math.cos(theta);
+  const crankPinY = crankCenterY - crankRadius * Math.sin(theta);
+
+  // Connecting rod
+  ctx.beginPath();
+  ctx.moveTo(crankCenterX - 10, pinY);
+  ctx.lineTo(crankPinX - 7, crankPinY);
+  ctx.lineTo(crankPinX + 7, crankPinY);
+  ctx.lineTo(crankCenterX + 10, pinY);
+  ctx.closePath();
+
+  const rodGrad = ctx.createLinearGradient(crankCenterX, pinY, crankPinX, crankPinY);
+  rodGrad.addColorStop(0, '#aaa');
+  rodGrad.addColorStop(0.5, '#ccc');
+  rodGrad.addColorStop(1, '#999');
+  ctx.fillStyle = rodGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#777';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Crank pin circle
+  ctx.beginPath();
+  ctx.arc(crankPinX, crankPinY, 7, 0, Math.PI * 2);
+  ctx.fillStyle = '#bbb';
+  ctx.fill();
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+function drawCrankshaft(theta) {
+  const crankPinX = crankCenterX + crankRadius * Math.cos(theta);
+  const crankPinY = crankCenterY - crankRadius * Math.sin(theta);
+
+  // Counterweight (opposite side of crank pin)
+  const cwX = crankCenterX - crankRadius * 0.7 * Math.cos(theta);
+  const cwY = crankCenterY + crankRadius * 0.7 * Math.sin(theta);
+
+  ctx.beginPath();
+  ctx.arc(cwX, cwY, 30, 0, Math.PI * 2);
+  const cwGrad = ctx.createRadialGradient(cwX, cwY, 5, cwX, cwY, 30);
+  cwGrad.addColorStop(0, '#999');
+  cwGrad.addColorStop(1, '#555');
+  ctx.fillStyle = cwGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Crank arm
+  ctx.beginPath();
+  ctx.moveTo(crankCenterX, crankCenterY);
+  ctx.lineTo(crankPinX, crankPinY);
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 14;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+
+  // Crank arm highlight
+  ctx.beginPath();
+  ctx.moveTo(crankCenterX, crankCenterY);
+  ctx.lineTo(crankPinX, crankPinY);
+  ctx.strokeStyle = '#aaa';
+  ctx.lineWidth = 8;
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+
+  // Main bearing
+  ctx.beginPath();
+  ctx.arc(crankCenterX, crankCenterY, 18, 0, Math.PI * 2);
+  const mainGrad = ctx.createRadialGradient(crankCenterX - 3, crankCenterY - 3, 2, crankCenterX, crankCenterY, 18);
+  mainGrad.addColorStop(0, '#ccc');
+  mainGrad.addColorStop(1, '#777');
+  ctx.fillStyle = mainGrad;
+  ctx.fill();
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(crankCenterX, crankCenterY, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#444';
+  ctx.fill();
+}
+
+function drawValves(strokeIndex, theta) {
+  const leftX = crankCenterX - cylinderWidth / 2;
+  const rightX = crankCenterX + cylinderWidth / 2;
+
+  // Intake valve (left side)
+  let intakeLift = 0;
+  if (strokeIndex === 0) {
+    // Open during intake stroke
+    const progress = (theta % Math.PI) / Math.PI;
+    intakeLift = valveMaxLift * Math.sin(progress * Math.PI);
+  }
+
+  // Exhaust valve (right side)
+  let exhaustLift = 0;
+  if (strokeIndex === 3) {
+    const progress = (theta % Math.PI) / Math.PI;
+    exhaustLift = valveMaxLift * Math.sin(progress * Math.PI);
+  }
+
+  // Intake valve port
+  const intakeValveX = crankCenterX - 30;
+  const exhaustValveX = crankCenterX + 30;
+
+  // Draw valve ports in cylinder head
+  // Intake port
+  ctx.fillStyle = '#3a3a4a';
+  ctx.fillRect(intakeValveX - valveWidth / 2, cylinderTop - 20, valveWidth, 22);
+
+  // Exhaust port
+  ctx.fillRect(exhaustValveX - valveWidth / 2, cylinderTop - 20, valveWidth, 22);
+
+  // Intake valve stem
+  ctx.fillStyle = '#aaa';
+  ctx.fillRect(intakeValveX - 3, cylinderTop - 50 - intakeLift, 6, 50 + intakeLift);
+
+  // Exhaust valve stem
+  ctx.fillRect(exhaustValveX - 3, cylinderTop - 50 - exhaustLift, 6, 50 + exhaustLift);
+
+  // Intake valve head
+  ctx.fillStyle = intakeLift > 2 ? '#4a9eff' : '#999';
+  ctx.beginPath();
+  ctx.ellipse(intakeValveX, cylinderTop + 2 + intakeLift, valveWidth / 2 + 4, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Exhaust valve head
+  ctx.fillStyle = exhaustLift > 2 ? '#8e8e8e' : '#999';
+  ctx.beginPath();
+  ctx.ellipse(exhaustValveX, cylinderTop + 2 + exhaustLift, valveWidth / 2 + 4, 5, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Intake flow arrows
+  if (intakeLift > 3) {
+    ctx.save();
+    ctx.globalAlpha = intakeLift / valveMaxLift * 0.7;
+    ctx.strokeStyle = '#4a9eff';
+    ctx.lineWidth = 2;
+    const arrowTime = Date.now() / 200;
+    for (let i = 0; i < 3; i++) {
+      const ay = cylinderTop - 50 + ((arrowTime * 30 + i * 20) % 60);
+      ctx.beginPath();
+      ctx.moveTo(intakeValveX, ay);
+      ctx.lineTo(intakeValveX, ay + 10);
+      ctx.moveTo(intakeValveX - 4, ay + 6);
+      ctx.lineTo(intakeValveX, ay + 10);
+      ctx.lineTo(intakeValveX + 4, ay + 6);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Exhaust flow arrows
+  if (exhaustLift > 3) {
+    ctx.save();
+    ctx.globalAlpha = exhaustLift / valveMaxLift * 0.7;
+    ctx.strokeStyle = '#8e8e8e';
+    ctx.lineWidth = 2;
+    const arrowTime = Date.now() / 200;
+    for (let i = 0; i < 3; i++) {
+      const ay = cylinderTop - 10 - ((arrowTime * 30 + i * 20) % 60);
+      ctx.beginPath();
+      ctx.moveTo(exhaustValveX, ay);
+      ctx.lineTo(exhaustValveX, ay - 10);
+      ctx.moveTo(exhaustValveX - 4, ay - 6);
+      ctx.lineTo(exhaustValveX, ay - 10);
+      ctx.lineTo(exhaustValveX + 4, ay - 6);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // Spark plug (center top)
+  drawSparkPlug(strokeIndex, theta);
+}
+
+function drawSparkPlug(strokeIndex, theta) {
+  const spX = crankCenterX;
+  const spY = cylinderTop - 5;
+
+  // Spark plug body
+  ctx.fillStyle = '#ddd';
+  ctx.fillRect(spX - 4, spY - 30, 8, 30);
+  ctx.fillStyle = '#eee';
+  ctx.fillRect(spX - 6, spY - 32, 12, 6);
+
+  // Ceramic insulator
+  ctx.fillStyle = '#f5f0e0';
+  ctx.fillRect(spX - 3, spY - 24, 6, 18);
+
+  // Electrode tip
+  ctx.fillStyle = '#888';
+  ctx.fillRect(spX - 1.5, spY, 3, 8);
+
+  // Spark during power stroke beginning
+  if (strokeIndex === 2) {
+    const progress = (theta % Math.PI) / Math.PI;
+    if (progress < 0.1) {
+      const sparkIntensity = 1 - progress / 0.1;
+      ctx.save();
+      ctx.globalAlpha = sparkIntensity;
+
+      // Spark glow
+      const sparkGrad = ctx.createRadialGradient(spX, spY + 8, 2, spX, spY + 8, 25);
+      sparkGrad.addColorStop(0, 'rgba(255, 255, 200, 0.9)');
+      sparkGrad.addColorStop(0.3, 'rgba(255, 200, 50, 0.6)');
+      sparkGrad.addColorStop(1, 'rgba(255, 100, 0, 0)');
+      ctx.fillStyle = sparkGrad;
+      ctx.fillRect(spX - 30, spY - 20, 60, 50);
+
+      // Spark lines
+      ctx.strokeStyle = '#ffffaa';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i++) {
+        const sa = (i / 4) * Math.PI * 2 + Date.now() / 50;
+        ctx.beginPath();
+        ctx.moveTo(spX, spY + 8);
+        ctx.lineTo(spX + Math.cos(sa) * 12, spY + 8 + Math.sin(sa) * 12);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+  }
+}
+
+function drawFlameEffect(pistonTopY, strokeIndex, theta) {
+  if (strokeIndex !== 2) return;
+
+  const progress = (theta % Math.PI) / Math.PI;
+  if (progress > 0.5) return;
+
+  const leftX = crankCenterX - cylinderWidth / 2 + 5;
+  const rightX = crankCenterX + cylinderWidth / 2 - 5;
+  const topY = cylinderTop + 5;
+  const h = pistonTopY - topY;
+
+  if (h <= 0) return;
+
+  const intensity = 1 - progress / 0.5;
+
+  ctx.save();
+  ctx.globalAlpha = intensity * 0.4;
+
+  // Flame gradient
+  const flameGrad = ctx.createLinearGradient(crankCenterX, topY, crankCenterX, pistonTopY);
+  flameGrad.addColorStop(0, 'rgba(255, 50, 0, 0.8)');
+  flameGrad.addColorStop(0.3, 'rgba(255, 150, 0, 0.6)');
+  flameGrad.addColorStop(0.7, 'rgba(255, 200, 50, 0.3)');
+  flameGrad.addColorStop(1, 'rgba(255, 220, 100, 0.1)');
+
+  ctx.fillStyle = flameGrad;
+  ctx.fillRect(leftX, topY, rightX - leftX, h);
+
+  ctx.restore();
+}
+
+function drawStrokeIndicator(strokeIndex) {
+  // Small indicator at bottom
+  const y = H - 30;
+  const labels = ['进气', '压缩', '做功', '排气'];
+  const colors = ['#4a9eff', '#c8c8c8', '#ff9f1c', '#8e8e8e'];
+
+  for (let i = 0; i < 4; i++) {
+    const x = crankCenterX - 120 + i * 80;
+    ctx.fillStyle = i === strokeIndex ? colors[i] : '#444';
+    ctx.font = i === strokeIndex ? 'bold 14px sans-serif' : '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(labels[i], x, y);
+
+    if (i === strokeIndex) {
+      ctx.beginPath();
+      ctx.arc(x, y + 6, 3, 0, Math.PI * 2);
+      ctx.fillStyle = colors[i];
+      ctx.fill();
+    }
+  }
+}
+
+function drawCrankAngle(theta) {
+  const a = ((theta % (4 * Math.PI)) + 4 * Math.PI) % (4 * Math.PI);
+  const degrees = Math.round((a / (4 * Math.PI)) * 1440) % 720;
+  ctx.fillStyle = '#888';
+  ctx.font = '13px sans-serif';
+  ctx.textAlign = 'right';
+  ctx.fillText(`曲轴角度: ${degrees}°`, W - 20, H - 10);
+}
+
+function animate() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  const pistonTopY = getPistonY(angle);
+  const strokeIndex = getStrokeIndex(angle);
+
+  // Draw order: cylinder back -> gas -> flame -> piston -> conrod -> crankshaft -> valves
+  drawCylinder();
+  drawGasSpace(pistonTopY, strokeIndex, angle);
+  drawFlameEffect(pistonTopY, strokeIndex, angle);
+  drawPiston(pistonTopY);
+  drawConRod(angle, pistonTopY);
+  drawCrankshaft(angle);
+  drawValves(strokeIndex, angle);
+  drawStrokeIndicator(strokeIndex);
+  drawCrankAngle(angle);
+
+  // Update label
+  strokeLabel.textContent = STROKE_NAMES[strokeIndex];
+  strokeLabel.style.color = STROKE_COLORS[strokeIndex];
+
+  angle += speed;
+  if (angle >= 4 * Math.PI) angle -= 4 * Math.PI;
+
+  requestAnimationFrame(animate);
+}
+
+animate();
+</script>
+</body>
+</html>
