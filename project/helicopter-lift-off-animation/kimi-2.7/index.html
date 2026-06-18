@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Helicopter Takeoff</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: linear-gradient(180deg, #6ab7ff 0%, #cfe9ff 55%, #c2a878 55%, #8b5a2b 100%);
+  }
+  .scene {
+    position: relative;
+    width: 100%;
+    height: 100%;
+  }
+  #dust {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: 10;
+  }
+  .heli-wrap {
+    position: absolute;
+    left: 50%;
+    bottom: 34vh;
+    width: 0;
+    height: 0;
+    z-index: 5;
+    will-change: transform;
+  }
+  .heli {
+    position: absolute;
+    left: -400px;
+    top: -420px;
+    width: 800px;
+    height: 600px;
+    overflow: visible;
+  }
+  .rotor {
+    transform-origin: 400px 160px;
+    will-change: transform, filter, opacity;
+  }
+  .tail-rotor {
+    transform-origin: 130px 210px;
+    will-change: transform, filter;
+  }
+  .shadow {
+    position: absolute;
+    left: 50%;
+    bottom: 34vh;
+    width: 280px;
+    height: 70px;
+    transform: translate(-50%, 0) scale(1);
+    background: radial-gradient(ellipse at center, rgba(30, 25, 15, 0.55) 0%, rgba(30, 25, 15, 0) 70%);
+    border-radius: 50%;
+    filter: blur(5px);
+    z-index: 4;
+    will-change: transform, opacity, filter;
+  }
+</style>
+</head>
+<body>
+<div class="scene">
+  <canvas id="dust"></canvas>
+  <div class="shadow" id="shadow"></div>
+  <div class="heli-wrap" id="heliWrap">
+    <svg class="heli" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="bodyGrad" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stop-color="#626b45"/>
+          <stop offset="45%" stop-color="#4b5320"/>
+          <stop offset="100%" stop-color="#303517"/>
+        </linearGradient>
+        <linearGradient id="glassGrad" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#c7f0ff"/>
+          <stop offset="100%" stop-color="#4a8fa8"/>
+        </linearGradient>
+        <filter id="rotorBlur" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="0"/>
+        </filter>
+      </defs>
+
+      <!-- Landing skids -->
+      <g stroke="#2e3316" stroke-width="6" stroke-linecap="round" fill="none">
+        <line x1="280" y1="420" x2="520" y2="420"/>
+        <line x1="300" y1="440" x2="500" y2="440"/>
+        <line x1="340" y1="380" x2="340" y2="420"/>
+        <line x1="460" y1="380" x2="460" y2="420"/>
+        <line x1="340" y1="380" x2="320" y2="440"/>
+        <line x1="460" y1="380" x2="480" y2="440"/>
+      </g>
+
+      <!-- Tail boom and vertical fin -->
+      <path d="M 330 300 L 160 285 L 160 340 L 350 345 Z" fill="url(#bodyGrad)" stroke="#2e3316" stroke-width="2"/>
+      <path d="M 160 285 L 115 175 L 150 175 L 185 285 Z" fill="url(#bodyGrad)" stroke="#2e3316" stroke-width="2"/>
+
+      <!-- Tail rotor mast -->
+      <line x1="130" y1="260" x2="130" y2="210" stroke="#2e3316" stroke-width="5"/>
+
+      <!-- Main rotor mast -->
+      <rect x="394" y="155" width="12" height="65" fill="#2e3316"/>
+
+      <!-- Fuselage -->
+      <ellipse cx="400" cy="330" rx="135" ry="78" fill="url(#bodyGrad)" stroke="#2e3316" stroke-width="2"/>
+
+      <!-- Cockpit window -->
+      <path d="M 425 265 Q 520 270 535 330 L 435 330 Z" fill="url(#glassGrad)" stroke="#2e3316" stroke-width="2"/>
+      <path d="M 440 275 Q 510 280 520 320 L 450 320 Z" fill="#e8fbff" opacity="0.45"/>
+
+      <!-- Tail rotor -->
+      <g class="tail-rotor" id="tailRotor">
+        <ellipse cx="130" cy="210" rx="5" ry="5" fill="#1a1a1a"/>
+        <rect x="105" y="165" width="50" height="6" rx="3" fill="#1a1a1a"/>
+        <rect x="105" y="249" width="50" height="6" rx="3" fill="#1a1a1a"/>
+        <rect x="85" y="204" width="90" height="5" rx="2" fill="#1a1a1a"/>
+      </g>
+
+      <!-- Main rotor -->
+      <g class="rotor" id="mainRotor">
+        <rect x="175" y="154" width="450" height="12" rx="5" fill="#1a1a1a"/>
+        <rect x="175" y="152" width="35" height="16" rx="2" fill="#ffcc00"/>
+        <rect x="590" y="152" width="35" height="16" rx="2" fill="#ffcc00"/>
+        <circle cx="400" cy="160" r="8" fill="#333"/>
+      </g>
+    </svg>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('dust');
+const ctx = canvas.getContext('2d');
+const heliWrap = document.getElementById('heliWrap');
+const shadow = document.getElementById('shadow');
+const mainRotor = document.getElementById('mainRotor');
+const tailRotor = document.getElementById('tailRotor');
+
+let width, height, groundY, centerX;
+function resize() {
+  width = canvas.width = window.innerWidth;
+  height = canvas.height = window.innerHeight;
+  const rect = heliWrap.getBoundingClientRect();
+  centerX = rect.left;
+  groundY = rect.top;
+}
+resize();
+window.addEventListener('resize', resize);
+
+const slowSpeed = 2.5;   // rad/s
+const fastSpeed = 42;    // rad/s
+const startupDur = 2500; // ms
+const spoolDur = 6000;   // ms
+const fullDur = 2000;    // ms
+const liftDur = 4500;    // ms
+const start = performance.now();
+
+let mainAngle = 0;
+let tailAngle = 0;
+let particles = [];
+const rand = (a, b) => a + Math.random() * (b - a);
+
+function easeOutCubic(x) {
+  return 1 - Math.pow(1 - x, 3);
+}
+
+function getSpeedAndLift(t) {
+  // t in seconds
+  let speed = slowSpeed;
+  let lift = 0;
+  const t1 = startupDur / 1000;
+  const t2 = t1 + spoolDur / 1000;
+  const t3 = t2 + fullDur / 1000;
+  const t4 = t3 + liftDur / 1000;
+
+  if (t < t1) {
+    speed = slowSpeed;
+  } else if (t < t2) {
+    const p = (t - t1) / (spoolDur / 1000);
+    const smooth = p * p * (3 - 2 * p);
+    speed = slowSpeed + (fastSpeed - slowSpeed) * smooth;
+  } else if (t < t3) {
+    speed = fastSpeed;
+  } else if (t < t4) {
+    speed = fastSpeed;
+    lift = easeOutCubic((t - t3) / (liftDur / 1000));
+  } else {
+    speed = fastSpeed;
+    lift = 1;
+  }
+  return { speed, lift };
+}
+
+function spawnParticle(speedFactor, liftFactor) {
+  const maxR = Math.min(width, height) * 0.24;
+  const r = maxR * Math.sqrt(Math.random());
+  const ang = rand(0, Math.PI * 2);
+  const x = centerX + Math.cos(ang) * r;
+  const y = groundY + rand(-4, 12);
+  const size = rand(2, 8);
+  const life = rand(0.35, 1.0);
+  const spread = speedFactor * 2 + 0.4;
+  const vx = (x - centerX) * rand(0.15, 0.7) * spread;
+  const vy = -rand(12, 45) * (speedFactor + 0.15) - rand(0, 25);
+  particles.push({ x, y, vx, vy, size, life, maxLife: life, alpha: rand(0.3, 0.8), drift: rand(-6, 6) });
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  const t = (now - start) / 1000;
+  const { speed, lift } = getSpeedAndLift(t);
+  const speedFactor = Math.max(0, (speed - slowSpeed) / (fastSpeed - slowSpeed));
+
+  mainAngle += speed * dt;
+  tailAngle += speed * 3.2 * dt;
+  mainRotor.style.transform = `rotate(${mainAngle}rad)`;
+  tailRotor.style.transform = `rotate(${tailAngle}rad)`;
+
+  // Motion blur grows with rotor speed
+  const mainBlur = Math.min(10, speedFactor * 8);
+  const tailBlur = Math.min(7, speedFactor * 6);
+  mainRotor.style.filter = `blur(${mainBlur}px)`;
+  tailRotor.style.filter = `blur(${tailBlur}px)`;
+  mainRotor.style.opacity = speedFactor > 0.82 ? 0.82 : 1;
+
+  // Dust: stronger as blades speed up, fading as the helicopter lifts clear
+  const maxRate = 140;
+  const rate = maxRate * speedFactor * (1 - lift * 0.92);
+  const spawnCount = Math.floor(rate * dt + Math.random());
+  for (let i = 0; i < spawnCount; i++) {
+    if (particles.length > 450) particles.shift();
+    spawnParticle(speedFactor, lift);
+  }
+
+  ctx.clearRect(0, 0, width, height);
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt * 0.65;
+    if (p.life <= 0) {
+      particles.splice(i, 1);
+      continue;
+    }
+    p.x += p.vx * dt + Math.sin(now * 0.004 + p.drift) * 0.6;
+    p.y += p.vy * dt;
+    p.vy += 22 * dt; // gravity
+    const a = p.alpha * (p.life / p.maxLife);
+    const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+    g.addColorStop(0, `rgba(170, 150, 115, ${a})`);
+    g.addColorStop(1, `rgba(170, 150, 115, 0)`);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Ground shadow shrinks and softens as the helicopter rises
+  const shadowScale = 1 - lift * 0.6;
+  const shadowAlpha = 0.65 - lift * 0.5;
+  const shadowBlur = 5 + lift * 14;
+  shadow.style.transform = `translate(-50%, 0) scale(${shadowScale})`;
+  shadow.style.opacity = shadowAlpha;
+  shadow.style.filter = `blur(${shadowBlur}px)`;
+
+  // Light vibration once blades hit full speed; lift begins shortly after
+  let shakeX = 0, shakeY = 0;
+  if (speedFactor > 0.98 && lift < 0.95) {
+    const intensity = 1.3 + lift * 0.6;
+    shakeX = rand(-intensity, intensity);
+    shakeY = rand(-intensity, intensity);
+  }
+  const liftPx = lift * Math.min(height * 0.38, 300);
+  heliWrap.style.transform = `translate(${shakeX}px, ${-liftPx + shakeY}px)`;
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Helicopter Takeoff</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    font-family: sans-serif;
+  }
+
+  #scene {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background: linear-gradient(to bottom,
+      #f4d7a8 0%,
+      #f7e4b8 30%,
+      #f9e8b8 50%,
+      #d9b47a 55%,
+      #a67a47 70%,
+      #6e4a25 100%);
+    overflow: hidden;
+  }
+
+  /* Distant mountains */
+  .mountains {
+    position: absolute;
+    bottom: 45%;
+    left: 0;
+    width: 100%;
+    height: 15%;
+    background:
+      radial-gradient(ellipse 30% 80% at 15% 100%, #7a5a3a 0%, transparent 70%),
+      radial-gradient(ellipse 40% 90% at 45% 100%, #6b4a2e 0%, transparent 70%),
+      radial-gradient(ellipse 35% 85% at 75% 100%, #7a5a3a 0%, transparent 70%),
+      radial-gradient(ellipse 25% 70% at 95% 100%, #6b4a2e 0%, transparent 70%);
+    opacity: 0.7;
+  }
+
+  /* Sun */
+  .sun {
+    position: absolute;
+    top: 15%;
+    right: 18%;
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fff4c4 0%, #ffd98a 50%, rgba(255,200,120,0) 80%);
+    box-shadow: 0 0 80px 30px rgba(255,210,140,0.5);
+  }
+
+  /* Ground line */
+  .ground {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 45%;
+    background: linear-gradient(to bottom, #a67a47 0%, #6e4a25 100%);
+  }
+
+  /* Helicopter wrapper - handles lift-off */
+  #heli {
+    position: absolute;
+    left: 50%;
+    bottom: 22%;
+    width: 520px;
+    height: 260px;
+    transform: translateX(-50%);
+    transform-origin: center center;
+    will-change: transform;
+  }
+
+  /* Shake wrapper - handles vibration */
+  #heli-shake {
+    width: 100%;
+    height: 100%;
+  }
+
+  #heli-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  /* Main rotor spin */
+  #main-rotor {
+    transform-origin: 260px 70px;
+    animation: spin-main var(--main-duration, 2s) linear infinite;
+    will-change: transform;
+  }
+
+  /* Tail rotor spin */
+  #tail-rotor {
+    transform-origin: 455px 120px;
+    animation: spin-tail var(--tail-duration, 0.2s) linear infinite;
+    will-change: transform;
+  }
+
+  @keyframes spin-main {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  @keyframes spin-tail {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* Rotor blur disc - appears as speed increases */
+  #rotor-disc {
+    transform-origin: 260px 70px;
+    opacity: 0;
+    will-change: opacity;
+  }
+
+  /* Ground shadow */
+  #ground-shadow {
+    position: absolute;
+    left: 50%;
+    bottom: 20%;
+    width: 420px;
+    height: 40px;
+    transform: translateX(-50%);
+    background: radial-gradient(ellipse, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 40%, rgba(0,0,0,0) 75%);
+    border-radius: 50%;
+    will-change: transform, opacity;
+  }
+
+  /* Dust canvas */
+  #dust {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+
+  /* Control button */
+  #controls {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 10;
+  }
+
+  #startBtn {
+    padding: 10px 20px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    letter-spacing: 1px;
+    backdrop-filter: blur(6px);
+  }
+
+  #startBtn:hover { background: rgba(0,0,0,0.8); }
+
+  #status {
+    margin-top: 8px;
+    color: #fff;
+    font-size: 12px;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    opacity: 0.85;
+  }
+</style>
+</head>
+<body>
+
+<div id="scene">
+  <div class="sun"></div>
+  <div class="mountains"></div>
+  <div class="ground"></div>
+
+  <div id="ground-shadow"></div>
+
+  <div id="heli">
+    <div id="heli-shake">
+      <svg id="heli-svg" viewBox="0 0 520 260" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <!-- Fuselage gradient -->
+          <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#4a5a3a"/>
+            <stop offset="45%" stop-color="#6b7a52"/>
+            <stop offset="70%" stop-color="#3e4a2e"/>
+            <stop offset="100%" stop-color="#2a3320"/>
+          </linearGradient>
+
+          <linearGradient id="bodyGradDark" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#3a4530"/>
+            <stop offset="100%" stop-color="#1e2516"/>
+          </linearGradient>
+
+          <!-- Cockpit glass -->
+          <radialGradient id="glassGrad" cx="0.3" cy="0.3" r="0.9">
+            <stop offset="0%" stop-color="#b8d8e8" stop-opacity="0.95"/>
+            <stop offset="40%" stop-color="#6a90a8" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="#2a4050" stop-opacity="0.95"/>
+          </radialGradient>
+
+          <!-- Rotor blade gradient -->
+          <linearGradient id="bladeGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#2a2a2a"/>
+            <stop offset="50%" stop-color="#555"/>
+            <stop offset="100%" stop-color="#1a1a1a"/>
+          </linearGradient>
+
+          <!-- Rotor disc (motion blur) -->
+          <radialGradient id="discGrad" cx="0.5" cy="0.5" r="0.5">
+            <stop offset="0%" stop-color="#000" stop-opacity="0"/>
+            <stop offset="70%" stop-color="#222" stop-opacity="0.15"/>
+            <stop offset="92%" stop-color="#111" stop-opacity="0.35"/>
+            <stop offset="100%" stop-color="#000" stop-opacity="0"/>
+          </radialGradient>
+
+          <!-- Metal highlight -->
+          <linearGradient id="metalGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#888"/>
+            <stop offset="100%" stop-color="#333"/>
+          </linearGradient>
+
+          <!-- Blur filter for fast rotors -->
+          <filter id="motionBlur" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="0.4"/>
+          </filter>
+        </defs>
+
+        <!-- Landing skids -->
+        <g id="skids">
+          <!-- Rear struts -->
+          <line x1="180" y1="200" x2="170" y2="230" stroke="#2a2a2a" stroke-width="3" stroke-linecap="round"/>
+          <line x1="320" y1="200" x2="330" y2="230" stroke="#2a2a2a" stroke-width="3" stroke-linecap="round"/>
+          <!-- Front cross bars -->
+          <line x1="170" y1="230" x2="150" y2="235" stroke="#2a2a2a" stroke-width="3" stroke-linecap="round"/>
+          <line x1="330" y1="230" x2="350" y2="235" stroke="#2a2a2a" stroke-width="3" stroke-linecap="round"/>
+          <!-- Long skid tubes -->
+          <rect x="110" y="232" width="280" height="6" rx="3" fill="url(#metalGrad)"/>
+          <rect x="110" y="232" width="280" height="2" rx="1" fill="#aaa" opacity="0.6"/>
+        </g>
+
+        <!-- Tail boom -->
+        <g id="tail">
+          <!-- Tail boom body -->
+          <path d="M 340 140 Q 400 130 460 118 L 460 132 Q 400 150 340 165 Z"
+                fill="url(#bodyGrad)" stroke="#1a2010" stroke-width="1"/>
+          <!-- Tail boom highlight -->
+          <path d="M 340 142 Q 400 133 458 122" stroke="#8a9a6a" stroke-width="1" fill="none" opacity="0.5"/>
+
+          <!-- Vertical tail fin -->
+          <path d="M 445 120 L 470 70 L 485 72 L 475 125 Z"
+                fill="url(#bodyGradDark)" stroke="#1a2010" stroke-width="1"/>
+          <!-- Horizontal stabilizer -->
+          <path d="M 440 128 L 478 120 L 478 128 L 440 135 Z"
+                fill="url(#bodyGradDark)" stroke="#1a2010" stroke-width="1"/>
+
+          <!-- Tail rotor mast -->
+          <rect x="453" y="115" width="4" height="10" fill="#333"/>
+          <!-- Tail rotor hub -->
+          <circle cx="455" cy="120" r="4" fill="#222"/>
+        </g>
+
+        <!-- Tail rotor blades -->
+        <g id="tail-rotor">
+          <rect x="453" y="95" width="4" height="50" rx="1.5" fill="url(#bladeGrad)"/>
+          <circle cx="455" cy="120" r="2.5" fill="#111"/>
+        </g>
+
+        <!-- Main fuselage -->
+        <g id="fuselage">
+          <!-- Lower body shadow -->
+          <path d="M 140 175 Q 160 210 240 215 Q 320 215 350 185 L 340 165 Q 300 180 240 180 Q 180 178 140 175 Z"
+                fill="#1e2516" opacity="0.6"/>
+
+          <!-- Main body -->
+          <path d="M 130 150
+                   Q 120 120 160 105
+                   L 260 95
+                   Q 330 95 355 120
+                   Q 365 140 355 165
+                   Q 340 190 280 195
+                   L 200 195
+                   Q 140 190 130 150 Z"
+                fill="url(#bodyGrad)" stroke="#1a2010" stroke-width="1.5"/>
+
+          <!-- Body top highlight -->
+          <path d="M 150 115 Q 200 100 260 100 Q 320 100 345 120"
+                stroke="#9aaa78" stroke-width="2" fill="none" opacity="0.6"/>
+
+          <!-- Engine housing on top -->
+          <path d="M 220 95 Q 230 75 260 73 Q 290 75 300 95 Z"
+                fill="url(#bodyGradDark)" stroke="#1a2010" stroke-width="1"/>
+          <ellipse cx="260" cy="85" rx="20" ry="4" fill="#1a2010" opacity="0.5"/>
+
+          <!-- Side panel line -->
+          <path d="M 150 150 Q 220 160 340 150" stroke="#1a2010" stroke-width="1" fill="none" opacity="0.6"/>
+
+          <!-- Door -->
+          <rect x="220" y="125" width="45" height="55" rx="3"
+                fill="none" stroke="#1a2010" stroke-width="1" opacity="0.5"/>
+          <circle cx="258" cy="152" r="1.5" fill="#1a2010" opacity="0.6"/>
+
+          <!-- Round military-style marking -->
+          <circle cx="180" cy="150" r="12" fill="#3a4530" stroke="#1a2010" stroke-width="0.5" opacity="0.8"/>
+          <circle cx="180" cy="150" r="6" fill="#8a9a6a" opacity="0.7"/>
+
+          <!-- Exhaust -->
+          <ellipse cx="310" cy="100" rx="8" ry="4" fill="#1a1a1a"/>
+          <ellipse cx="310" cy="100" rx="5" ry="2.5" fill="#000"/>
+        </g>
+
+        <!-- Cockpit (glass bubble) -->
+        <g id="cockpit">
+          <path d="M 135 140
+                   Q 120 115 150 100
+                   L 210 95
+                   Q 225 100 225 125
+                   Q 220 150 200 158
+                   L 160 158
+                   Q 140 155 135 140 Z"
+                fill="url(#glassGrad)" stroke="#1a2010" stroke-width="1.5"/>
+          <!-- Glass reflection -->
+          <path d="M 150 108 Q 175 100 205 102" stroke="#e8f0f8" stroke-width="2" fill="none" opacity="0.7" stroke-linecap="round"/>
+          <path d="M 145 120 Q 155 115 175 114" stroke="#e8f0f8" stroke-width="1" fill="none" opacity="0.4" stroke-linecap="round"/>
+          <!-- Window frame -->
+          <line x1="180" y1="97" x2="180" y2="158" stroke="#1a2010" stroke-width="1" opacity="0.5"/>
+        </g>
+
+        <!-- Main rotor mast -->
+        <g id="rotor-mast">
+          <rect x="256" y="60" width="8" height="20" fill="#333"/>
+          <rect x="254" y="58" width="12" height="4" fill="#555"/>
+          <circle cx="260" cy="70" r="6" fill="#222"/>
+          <circle cx="260" cy="70" r="3" fill="#555"/>
+        </g>
+
+        <!-- Rotor motion blur disc (visible at high speed) -->
+        <ellipse id="rotor-disc" cx="260" cy="70" rx="230" ry="6" fill="url(#discGrad)"/>
+
+        <!-- Main rotor blades -->
+        <g id="main-rotor" filter="url(#motionBlur)">
+          <!-- 4 blades -->
+          <rect x="30" y="67" width="230" height="6" rx="2" fill="url(#bladeGrad)"/>
+          <rect x="260" y="67" width="230" height="6" rx="2" fill="url(#bladeGrad)"/>
+          <rect x="30" y="67" width="230" height="6" rx="2" fill="url(#bladeGrad)" transform="rotate(90 260 70)"/>
+          <rect x="260" y="67" width="230" height="6" rx="2" fill="url(#bladeGrad)" transform="rotate(90 260 70)"/>
+          <!-- Hub cap -->
+          <circle cx="260" cy="70" r="5" fill="#111"/>
+        </g>
+
+      </svg>
+    </div>
+  </div>
+
+  <canvas id="dust"></canvas>
+
+  <div id="controls">
+    <button id="startBtn">START ENGINE</button>
+    <div id="status">Ready for startup</div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const heli = document.getElementById('heli');
+  const heliShake = document.getElementById('heli-shake');
+  const mainRotor = document.getElementById('main-rotor');
+  const tailRotor = document.getElementById('tail-rotor');
+  const rotorDisc = document.getElementById('rotor-disc');
+  const groundShadow = document.getElementById('ground-shadow');
+  const dustCanvas = document.getElementById('dust');
+  const ctx = dustCanvas.getContext('2d');
+  const startBtn = document.getElementById('startBtn');
+  const statusEl = document.getElementById('status');
+
+  let W, H;
+  function resize() {
+    W = dustCanvas.width = window.innerWidth;
+    H = dustCanvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // Animation state
+  let state = {
+    phase: 'idle',        // idle | spinup | fullspeed | shaking | liftoff | gone
+    startTime: 0,
+    rotorSpeed: 0,        // 0..1 (normalized)
+    shake: 0,
+    liftY: 0,
+    shadowScale: 1,
+    shadowOpacity: 1,
+  };
+
+  // Dust particles
+  const particles = [];
+  const MAX_PARTICLES = 400;
+
+  function spawnDust(intensity) {
+    // Spawn from beneath the main rotor, spreading outward
+    const heliRect = heli.getBoundingClientRect();
+    const rotorCenterX = heliRect.left + heliRect.width * (260/520);
+    const rotorCenterY = heliRect.top + heliRect.height * (70/260);
+    const groundY = rotorCenterY + 160; // approximate ground below skids
+
+    const count = Math.floor(intensity * 4);
+    for (let i = 0; i < count && particles.length < MAX_PARTICLES; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = (0.5 + Math.random() * 2) * intensity;
+      particles.push({
+        x: rotorCenterX + (Math.random() - 0.5) * 100,
+        y: groundY - Math.random() * 10,
+        vx: Math.cos(angle) * speed * (1 + Math.random()),
+        vy: -Math.random() * 0.5 + Math.abs(Math.sin(angle)) * speed * 0.3 + 0.3,
+        life: 1,
+        decay: 0.005 + Math.random() * 0.01,
+        size: 8 + Math.random() * 20,
+        hue: 30 + Math.random() * 15,
+      });
+    }
+  }
+
+  function updateParticles() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.02; // gravity
+      p.vx *= 0.99;
+      p.life -= p.decay;
+      if (p.life <= 0 || p.y > H + 20) {
+        particles.splice(i, 1);
+      }
+    }
+  }
+
+  function drawParticles() {
+    ctx.clearRect(0, 0, W, H);
+    for (const p of particles) {
+      const alpha = p.life * 0.5;
+      const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+      grad.addColorStop(0, `hsla(${p.hue}, 40%, 55%, ${alpha})`);
+      grad.addColorStop(0.5, `hsla(${p.hue}, 35%, 50%, ${alpha * 0.4})`);
+      grad.addColorStop(1, `hsla(${p.hue}, 30%, 45%, 0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Timeline (ms)
+  const TIMELINE = {
+    spinupStart: 0,
+    spinupEnd: 4500,
+    fullSpeedAt: 6500,
+    shakeStart: 6500,
+    shakeEnd: 8500,
+    liftoffStart: 8500,
+    liftoffEnd: 13000,
+  };
+
+  function setRotorDuration(seconds) {
+    mainRotor.style.setProperty('--main-duration', seconds + 's');
+    // Tail rotor always faster (smaller)
+    tailRotor.style.setProperty('--tail-duration', Math.max(0.05, seconds * 0.15) + 's');
+  }
+
+  function easeInOut(t) {
+    return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2;
+  }
+  function easeIn(t) { return t*t; }
+  function easeOut(t) { return 1 - Math.pow(1-t, 3); }
+
+  let animStart = 0;
+  let running = false;
+
+  function loop(ts) {
+    if (!running) return;
+    if (!animStart) animStart = ts;
+    const t = ts - animStart;
+
+    // --- Phase logic ---
+    let rotorSpeed = 0;
+    let discOpacity = 0;
+    let shakeAmp = 0;
+    let lift = 0;
+    let shadowScale = 1;
+    let shadowOpacity = 1;
+    let dustIntensity = 0;
+    let phaseText = '';
+
+    if (t < TIMELINE.spinupEnd) {
+      // Spin-up phase: rotors accelerate
+      const p = t / TIMELINE.spinupEnd;
+      rotorSpeed = easeIn(p);
+      // Disc fades in as speed increases
+      discOpacity = Math.max(0, (rotorSpeed - 0.3) / 0.7) * 0.9;
+      dustIntensity = Math.max(0, rotorSpeed - 0.2) * 1.2;
+      phaseText = rotorSpeed < 0.3 ? 'Ignition...' : 'Rotors spinning up';
+    } else if (t < TIMELINE.fullSpeedAt) {
+      // Approaching full speed
+      const p = (t - TIMELINE.spinupEnd) / (TIMELINE.fullSpeedAt - TIMELINE.spinupEnd);
+      rotorSpeed = 0.9 + p * 0.1;
+      discOpacity = 0.9;
+      dustIntensity = 1.2 + p * 0.5;
+      phaseText = 'Power increasing';
+    } else if (t < TIMELINE.shakeEnd) {
+      // Full speed, shaking
+      const p = (t - TIMELINE.fullSpeedAt) / (TIMELINE.shakeEnd - TIMELINE.fullSpeedAt);
+      rotorSpeed = 1;
+      discOpacity = 0.95;
+      shakeAmp = Math.sin(p * Math.PI) * 3; // peaks mid-phase
+      dustIntensity = 1.8;
+      phaseText = 'Full power - liftoff prep';
+    } else if (t < TIMELINE.liftoffEnd) {
+      // Lifting off
+      const p = (t - TIMELINE.liftoffStart) / (TIMELINE.liftoffEnd - TIMELINE.liftoffStart);
+      const ep = easeInOut(p);
+      rotorSpeed = 1;
+      discOpacity = 0.95;
+      lift = ep * (window.innerHeight * 0.9); // fly up off screen
+      shakeAmp = (1 - p) * 1.5;
+      shadowScale = 1 - ep * 0.7;
+      shadowOpacity = 1 - ep;
+      // Dust burst at start of liftoff, then fade
+      dustIntensity = p < 0.2 ? 2.5 : Math.max(0, 2.5 * (1 - (p-0.2)/0.8));
+      phaseText = 'Lifting off';
+    } else {
+      // Gone
+      rotorSpeed = 1;
+      lift = window.innerHeight;
+      shadowOpacity = 0;
+      dustIntensity = 0;
+      phaseText = 'Departed';
+      // Let remaining dust settle then stop
+      if (particles.length === 0) {
+        running = false;
+        statusEl.textContent = 'Flight complete - click to replay';
+        startBtn.textContent = 'REPLAY';
+      }
+    }
+
+    // Apply rotor speed -> animation duration
+    // Slow start (2s per rev) -> fast (0.08s per rev)
+    const duration = 2 - rotorSpeed * 1.92;
+    setRotorDuration(Math.max(0.04, duration));
+
+    // Rotor disc opacity
+    rotorDisc.style.opacity = discOpacity;
+
+    // Shake
+    if (shakeAmp > 0) {
+      const sx = (Math.random() - 0.5) * shakeAmp;
+      const sy = (Math.random() - 0.5) * shakeAmp;
+      heliShake.style.transform = `translate(${sx}px, ${sy}px)`;
+    } else {
+      heliShake.style.transform = '';
+    }
+
+    // Lift
+    heli.style.transform = `translateX(-50%) translateY(${-lift}px)`;
+
+    // Ground shadow
+    groundShadow.style.transform = `translateX(-50%) scale(${shadowScale})`;
+    groundShadow.style.opacity = shadowOpacity;
+
+    // Dust
+    if (dustIntensity > 0) spawnDust(dustIntensity);
+    updateParticles();
+    drawParticles();
+
+    if (phaseText) statusEl.textContent = phaseText;
+
+    requestAnimationFrame(loop);
+  }
+
+  function start() {
+    // Reset
+    animStart = 0;
+    particles.length = 0;
+    state = { phase: 'idle', rotorSpeed: 0, shake: 0, liftY: 0, shadowScale: 1, shadowOpacity: 1 };
+    heli.style.transform = 'translateX(-50%)';
+    heliShake.style.transform = '';
+    rotorDisc.style.opacity = 0;
+    groundShadow.style.opacity = 1;
+    groundShadow.style.transform = 'translateX(-50%) scale(1)';
+    setRotorDuration(2);
+    running = true;
+    startBtn.textContent = 'RUNNING...';
+    startBtn.disabled = true;
+    requestAnimationFrame((ts) => {
+      animStart = ts;
+      loop(ts);
+    });
+  }
+
+  startBtn.addEventListener('click', () => {
+    startBtn.disabled = false;
+    start();
+  });
+
+  // Initial state - rotors still
+  setRotorDuration(999); // effectively stopped
+})();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Helicopter Takeoff</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: linear-gradient(180deg, #87CEEB 0%, #B0E0E6 40%, #98D8C8 70%, #6B8F71 100%);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: sans-serif;
+  }
+  canvas { display: block; }
+  #restart {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    padding: 10px 22px;
+    background: rgba(0,0,0,0.5);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    backdrop-filter: blur(4px);
+    transition: background 0.2s;
+    z-index: 10;
+  }
+  #restart:hover { background: rgba(0,0,0,0.7); }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="restart">Replay</button>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Timeline ───
+const PHASE = {
+  IDLE:       { start: 0,    end: 0.08 },
+  SPIN_UP:    { start: 0.08, end: 0.45 },
+  FULL_SPEED: { start: 0.45, end: 0.65 },
+  LIFT_OFF:   { start: 0.65, end: 1.0  },
+};
+const TOTAL_DURATION = 12000; // ms
+
+// ─── Dust particles ───
+class DustParticle {
+  constructor(x, y, force) {
+    this.x = x + (Math.random() - 0.5) * 120;
+    this.y = y + Math.random() * 5;
+    this.vx = (Math.random() - 0.5) * force * 3;
+    this.vy = -Math.random() * force * 2 - 0.5;
+    this.life = 1;
+    this.decay = 0.008 + Math.random() * 0.012;
+    this.size = 2 + Math.random() * 6;
+    this.alpha = 0.3 + Math.random() * 0.4;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vy += 0.02; // slight gravity
+    this.vx *= 0.99;
+    this.life -= this.decay;
+    this.size *= 1.005;
+  }
+  draw(ctx) {
+    if (this.life <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = this.life * this.alpha;
+    ctx.fillStyle = '#C4A86B';
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─── Small debris ───
+class Debris {
+  constructor(x, y, force) {
+    this.x = x + (Math.random() - 0.5) * 80;
+    this.y = y;
+    this.vx = (Math.random() - 0.5) * force * 5;
+    this.vy = -Math.random() * force * 3 - 1;
+    this.life = 1;
+    this.decay = 0.015 + Math.random() * 0.01;
+    this.rot = Math.random() * Math.PI * 2;
+    this.rotV = (Math.random() - 0.5) * 0.3;
+    this.w = 2 + Math.random() * 4;
+    this.h = 1 + Math.random() * 2;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vy += 0.05;
+    this.rot += this.rotV;
+    this.life -= this.decay;
+  }
+  draw(ctx) {
+    if (this.life <= 0) return;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(this.rot);
+    ctx.globalAlpha = this.life * 0.7;
+    ctx.fillStyle = '#8B7355';
+    ctx.fillRect(-this.w / 2, -this.h / 2, this.w, this.h);
+    ctx.restore();
+  }
+}
+
+let dustParticles = [];
+let debrisParticles = [];
+
+// ─── Helicopter drawing ───
+function drawHelicopter(cx, cy, scale, bladeAngle, tailBladeAngle, rotorSpeed, t, shake) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+
+  // Shake
+  const sx = shake * (Math.sin(t * 47) * 0.6 + Math.sin(t * 73) * 0.4);
+  const sy = shake * (Math.cos(t * 53) * 0.5 + Math.cos(t * 89) * 0.5);
+  ctx.translate(sx, sy);
+
+  // ─── Ground shadow ───
+  const shadowDist = Math.max(0, -cy + H * 0.65) * 0.01;
+  const shadowScale = 1 + shadowDist * 0.3;
+  const shadowAlpha = Math.max(0.08, 0.25 - shadowDist * 0.05);
+  ctx.save();
+  ctx.translate(0, 200 - cy / scale + (H * 0.65) / scale);
+  ctx.scale(shadowScale, 0.15);
+  ctx.globalAlpha = shadowAlpha;
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 160, 80, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // ─── Tail boom ───
+  ctx.save();
+  ctx.fillStyle = '#3A3A3A';
+  ctx.strokeStyle = '#2A2A2A';
+  ctx.lineWidth = 1.5;
+
+  // Tail boom
+  ctx.beginPath();
+  ctx.moveTo(50, -20);
+  ctx.lineTo(195, -55);
+  ctx.lineTo(200, -45);
+  ctx.lineTo(55, -12);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Tail fin vertical
+  ctx.beginPath();
+  ctx.moveTo(185, -55);
+  ctx.lineTo(195, -110);
+  ctx.lineTo(205, -108);
+  ctx.lineTo(200, -50);
+  ctx.closePath();
+  ctx.fillStyle = '#444';
+  ctx.fill();
+  ctx.stroke();
+
+  // Tail fin horizontal
+  ctx.beginPath();
+  ctx.moveTo(182, -58);
+  ctx.lineTo(210, -65);
+  ctx.lineTo(215, -55);
+  ctx.lineTo(200, -50);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Tail rotor housing
+  ctx.fillStyle = '#555';
+  ctx.beginPath();
+  ctx.ellipse(198, -85, 8, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Tail rotor blades
+  ctx.save();
+  ctx.translate(198, -85);
+  ctx.rotate(tailBladeAngle);
+  for (let i = 0; i < 2; i++) {
+    ctx.save();
+    ctx.rotate(i * Math.PI);
+    ctx.fillStyle = '#666';
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.ellipse(0, -18, 2.5, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  ctx.restore();
+  ctx.restore();
+
+  // ─── Main body ───
+  ctx.save();
+  // Main fuselage
+  const bodyGrad = ctx.createLinearGradient(-60, -60, 60, 40);
+  bodyGrad.addColorStop(0, '#5A6E5A');
+  bodyGrad.addColorStop(0.3, '#4A5E4A');
+  bodyGrad.addColorStop(0.7, '#3D4F3D');
+  bodyGrad.addColorStop(1, '#2E3E2E');
+  ctx.fillStyle = bodyGrad;
+  ctx.strokeStyle = '#2A3A2A';
+  ctx.lineWidth = 1.5;
+
+  // Fuselage shape
+  ctx.beginPath();
+  ctx.moveTo(-70, -15);
+  ctx.bezierCurveTo(-75, -35, -55, -50, -20, -48);
+  ctx.lineTo(40, -38);
+  ctx.bezierCurveTo(60, -35, 65, -25, 60, -15);
+  ctx.lineTo(55, 25);
+  ctx.bezierCurveTo(50, 40, 30, 48, 10, 48);
+  ctx.lineTo(-40, 45);
+  ctx.bezierCurveTo(-60, 42, -75, 30, -75, 15);
+  ctx.lineTo(-70, -15);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Cockpit glass
+  const glassGrad = ctx.createLinearGradient(-70, -40, -20, 10);
+  glassGrad.addColorStop(0, '#8EC5E8');
+  glassGrad.addColorStop(0.5, '#6AADDB');
+  glassGrad.addColorStop(1, '#4A8DBF');
+  ctx.fillStyle = glassGrad;
+  ctx.beginPath();
+  ctx.moveTo(-65, -12);
+  ctx.bezierCurveTo(-68, -30, -55, -42, -25, -42);
+  ctx.lineTo(-15, -38);
+  ctx.lineTo(-15, 5);
+  ctx.bezierCurveTo(-20, 10, -50, 8, -62, -2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#3A6A8A';
+  ctx.stroke();
+
+  // Glass reflection
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.moveTo(-58, -32);
+  ctx.bezierCurveTo(-55, -36, -42, -38, -32, -36);
+  ctx.lineTo(-35, -25);
+  ctx.bezierCurveTo(-45, -22, -55, -24, -58, -32);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  // Panel lines
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(-15, -38);
+  ctx.lineTo(-15, 5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(10, -35);
+  ctx.lineTo(10, 40);
+  ctx.stroke();
+
+  // Exhaust
+  ctx.fillStyle = '#555';
+  ctx.fillRect(25, -38, 12, 6);
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(25, -38, 12, 6);
+
+  // Landing skids
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  // Left skid strut
+  ctx.beginPath();
+  ctx.moveTo(-40, 45);
+  ctx.lineTo(-48, 72);
+  ctx.stroke();
+  // Right skid strut
+  ctx.beginPath();
+  ctx.moveTo(20, 48);
+  ctx.lineTo(25, 72);
+  ctx.stroke();
+  // Skid bar
+  ctx.lineWidth = 3.5;
+  ctx.beginPath();
+  ctx.moveTo(-60, 72);
+  ctx.lineTo(38, 72);
+  ctx.stroke();
+  // Cross bar
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(-55, 60);
+  ctx.lineTo(32, 60);
+  ctx.stroke();
+
+  ctx.restore();
+
+  // ─── Main rotor mast ───
+  ctx.fillStyle = '#555';
+  ctx.fillRect(-5, -55, 10, 15);
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-5, -55, 10, 15);
+
+  // Rotor hub
+  ctx.fillStyle = '#666';
+  ctx.beginPath();
+  ctx.arc(0, -58, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#555';
+  ctx.stroke();
+
+  // ─── Main rotor blades ───
+  ctx.save();
+  ctx.translate(0, -58);
+
+  // Motion blur effect — draw multiple faded copies
+  const blurSteps = rotorSpeed > 0.3 ? Math.min(8, Math.floor(rotorSpeed * 10)) : 0;
+  const blurSpread = rotorSpeed * 0.06;
+
+  for (let b = blurSteps; b >= 0; b--) {
+    const blurAngle = bladeAngle - b * blurSpread;
+    const alpha = b === 0 ? 1 : 0.08 / (b * 0.5);
+    ctx.save();
+    ctx.rotate(blurAngle);
+    ctx.globalAlpha = alpha;
+
+    for (let i = 0; i < 2; i++) {
+      ctx.save();
+      ctx.rotate(i * Math.PI);
+
+      // Blade
+      const bladeGrad = ctx.createLinearGradient(10, 0, 170, 0);
+      bladeGrad.addColorStop(0, '#555');
+      bladeGrad.addColorStop(0.1, '#777');
+      bladeGrad.addColorStop(0.5, '#666');
+      bladeGrad.addColorStop(0.9, '#555');
+      bladeGrad.addColorStop(1, '#444');
+      ctx.fillStyle = bladeGrad;
+
+      ctx.beginPath();
+      ctx.moveTo(8, -3);
+      ctx.lineTo(30, -11);
+      ctx.lineTo(155, -8);
+      ctx.lineTo(170, -3);
+      ctx.lineTo(170, 3);
+      ctx.lineTo(155, 6);
+      ctx.lineTo(30, 8);
+      ctx.lineTo(8, 3);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#3A3A3A';
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+
+      // Blade tip
+      ctx.fillStyle = '#E44';
+      ctx.beginPath();
+      ctx.moveTo(155, -8);
+      ctx.lineTo(170, -3);
+      ctx.lineTo(170, 3);
+      ctx.lineTo(155, 6);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // ─── Downwash visual (air distortion ring) ───
+  if (rotorSpeed > 0.2) {
+    const washAlpha = rotorSpeed * 0.15;
+    ctx.save();
+    ctx.translate(0, 80);
+    ctx.globalAlpha = washAlpha;
+    for (let r = 0; r < 3; r++) {
+      const radius = 60 + r * 40 + Math.sin(t * 3 + r) * 10;
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(0, r * 15, radius, 8 + r * 3, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  ctx.restore();
+}
+
+// ─── Ground elements ───
+const grassBlades = [];
+for (let i = 0; i < 200; i++) {
+  grassBlades.push({
+    x: Math.random() * 2000 - 1000,
+    h: 8 + Math.random() * 18,
+    w: 1.5 + Math.random() * 2,
+    phase: Math.random() * Math.PI * 2,
+    shade: Math.random() * 0.3,
+  });
+}
+
+function drawGround(heliX, heliY, rotorSpeed, t) {
+  const groundY = H * 0.65;
+
+  // Ground gradient
+  const groundGrad = ctx.createLinearGradient(0, groundY, 0, H);
+  groundGrad.addColorStop(0, '#6B8F4A');
+  groundGrad.addColorStop(0.3, '#5A7E3A');
+  groundGrad.addColorStop(1, '#4A6E2A');
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, groundY, W, H - groundY);
+
+  // Ground line
+  ctx.strokeStyle = '#4A6E2A';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, groundY);
+  ctx.lineTo(W, groundY);
+  ctx.stroke();
+
+  // Grass blades — react to rotor downwash
+  const washDist = Math.abs(heliX - W / 2);
+  const washStrength = rotorSpeed * Math.max(0, 1 - washDist / 400);
+
+  grassBlades.forEach(g => {
+    const gx = W / 2 + g.x;
+    const distFromCenter = Math.abs(gx - W / 2);
+    const localWash = washStrength * Math.max(0, 1 - distFromCenter / 350);
+    const wind = localWash * 25 + Math.sin(t * 2 + g.phase) * 2;
+
+    ctx.save();
+    ctx.translate(gx, groundY);
+    ctx.rotate(-wind * 0.015);
+
+    const green = Math.floor(100 + g.shade * 60);
+    ctx.fillStyle = `rgb(${60 + g.shade * 30}, ${green}, ${30 + g.shade * 20})`;
+    ctx.beginPath();
+    ctx.moveTo(-g.w / 2, 0);
+    ctx.quadraticCurveTo(-g.w / 2 - wind * 0.3, -g.h * 0.6, -g.w * 0.3 + wind * 0.2, -g.h);
+    ctx.quadraticCurveTo(g.w * 0.2 + wind * 0.1, -g.h * 0.7, g.w / 2, 0);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  });
+
+  // Ground dust / dirt patches
+  if (rotorSpeed > 0.1) {
+    ctx.save();
+    ctx.globalAlpha = rotorSpeed * 0.08;
+    ctx.fillStyle = '#8B7355';
+    for (let i = 0; i < 5; i++) {
+      const px = W / 2 + Math.sin(i * 2.5 + t * 0.5) * (80 + rotorSpeed * 100);
+      const pw = 20 + Math.random() * 30;
+      ctx.beginPath();
+      ctx.ellipse(px, groundY + 2, pw, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ─── Clouds ───
+const clouds = [];
+for (let i = 0; i < 6; i++) {
+  clouds.push({
+    x: Math.random() * W,
+    y: 30 + Math.random() * H * 0.3,
+    scale: 0.5 + Math.random() * 0.8,
+    speed: 0.1 + Math.random() * 0.2,
+    parts: Array.from({length: 3 + Math.floor(Math.random() * 3)}, () => ({
+      ox: (Math.random() - 0.5) * 80,
+      oy: (Math.random() - 0.5) * 20,
+      r: 25 + Math.random() * 35,
+    })),
+  });
+}
+
+function drawClouds(t) {
+  clouds.forEach(c => {
+    c.x += c.speed;
+    if (c.x > W + 150) c.x = -150;
+
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.scale(c.scale, c.scale);
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = '#fff';
+    c.parts.forEach(p => {
+      ctx.beginPath();
+      ctx.arc(p.ox, p.oy, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.restore();
+  });
+}
+
+// ─── Hills ───
+function drawHills() {
+  // Far hills
+  ctx.fillStyle = '#7BA67B';
+  ctx.beginPath();
+  ctx.moveTo(0, H * 0.65);
+  for (let x = 0; x <= W; x += 50) {
+    ctx.lineTo(x, H * 0.58 + Math.sin(x * 0.004) * 30 + Math.sin(x * 0.008) * 15);
+  }
+  ctx.lineTo(W, H * 0.65);
+  ctx.closePath();
+  ctx.fill();
+
+  // Near hills
+  ctx.fillStyle = '#6B966B';
+  ctx.beginPath();
+  ctx.moveTo(0, H * 0.65);
+  for (let x = 0; x <= W; x += 30) {
+    ctx.lineTo(x, H * 0.61 + Math.sin(x * 0.006 + 1) * 20 + Math.sin(x * 0.012 + 2) * 10);
+  }
+  ctx.lineTo(W, H * 0.65);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ─── Sun ───
+function drawSun() {
+  const sx = W * 0.85, sy = H * 0.1;
+  // Glow
+  const glow = ctx.createRadialGradient(sx, sy, 10, sx, sy, 120);
+  glow.addColorStop(0, 'rgba(255,250,200,0.8)');
+  glow.addColorStop(0.3, 'rgba(255,240,150,0.3)');
+  glow.addColorStop(1, 'rgba(255,240,150,0)');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(sx, sy, 120, 0, Math.PI * 2);
+  ctx.fill();
+  // Sun body
+  ctx.fillStyle = '#FFF4C4';
+  ctx.beginPath();
+  ctx.arc(sx, sy, 30, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ─── Easing ───
+function easeInOut(t) {
+  return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+}
+function easeOut(t) {
+  return 1 - Math.pow(1 - t, 3);
+}
+
+// ─── Main loop ───
+let startTime = null;
+let animId = null;
+
+function animate(timestamp) {
+  if (!startTime) startTime = timestamp;
+  const elapsed = timestamp - startTime;
+  const rawT = Math.min(elapsed / TOTAL_DURATION, 1);
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Sky gradient shift
+  const skyLift = rawT > PHASE.LIFT_OFF.start ? (rawT - PHASE.LIFT_OFF.start) / (1 - PHASE.LIFT_OFF.start) : 0;
+
+  // Draw scene layers
+  drawSun();
+  drawClouds(elapsed * 0.001);
+
+  const groundY = H * 0.65;
+  drawHills();
+
+  // Compute helicopter state
+  let bladeSpeed = 0;
+  let tailBladeAngle = elapsed * 0.003; // always spinning
+  let bladeAngle = 0;
+  let shake = 0;
+  let heliY = groundY - 20;
+  let heliScale = Math.min(1, W / 900);
+  let rotorRPM = 0;
+
+  if (rawT < PHASE.IDLE.end) {
+    // Idle — blades still, tail rotor slow
+    bladeSpeed = 0;
+    tailBladeAngle = elapsed * 0.002;
+  } else if (rawT < PHASE.SPIN_UP.end) {
+    // Spin up
+    const st = (rawT - PHASE.SPIN_UP.start) / (PHASE.SPIN_UP.end - PHASE.SPIN_UP.start);
+    bladeSpeed = easeInOut(st);
+    tailBladeAngle = elapsed * (0.002 + st * 0.02);
+    shake = st * 1.5;
+  } else if (rawT < PHASE.FULL_SPEED.end) {
+    // Full speed — hover before lift
+    bladeSpeed = 1;
+    tailBladeAngle = elapsed * 0.025;
+    shake = 1.5 + Math.sin(elapsed * 0.01) * 0.5;
+  } else {
+    // Lift off
+    const lt = (rawT - PHASE.LIFT_OFF.start) / (PHASE.LIFT_OFF.end - PHASE.LIFT_OFF.start);
+    const liftEased = easeOut(lt);
+    bladeSpeed = 1;
+    tailBladeAngle = elapsed * 0.025;
+    heliY = groundY - 20 - liftEased * H * 0.45;
+    shake = Math.max(0, 1.5 - lt * 1.5) + (lt < 0.3 ? Math.sin(lt * 40) * 2 : 0);
+  }
+
+  bladeAngle = elapsed * 0.001 * (0.1 + bladeSpeed * 15);
+  tailBladeAngle *= 1;
+
+  // Dust & debris spawning
+  const dustRate = bladeSpeed * bladeSpeed;
+  const dustY = groundY - 5;
+
+  if (dustRate > 0.05) {
+    const count = Math.floor(dustRate * 4);
+    for (let i = 0; i < count; i++) {
+      dustParticles.push(new DustParticle(W / 2, dustY, dustRate));
+    }
+    if (dustRate > 0.5 && Math.random() < dustRate * 0.3) {
+      debrisParticles.push(new Debris(W / 2, dustY, dustRate));
+    }
+  }
+
+  // Update & draw dust
+  dustParticles = dustParticles.filter(p => p.life > 0);
+  dustParticles.forEach(p => { p.update(); });
+
+  debrisParticles = debrisParticles.filter(p => p.life > 0);
+  debrisParticles.forEach(p => { p.update(); });
+
+  // Draw ground (behind helicopter)
+  drawGround(W / 2, heliY, bladeSpeed, elapsed * 0.001);
+
+  // Draw dust (behind heli)
+  dustParticles.forEach(p => p.draw(ctx));
+  debrisParticles.forEach(p => p.draw(ctx));
+
+  // Draw helicopter
+  drawHelicopter(W / 2, heliY, heliScale, bladeAngle, tailBladeAngle, bladeSpeed, elapsed * 0.001, shake);
+
+  // Exhaust heat haze
+  if (bladeSpeed > 0.3) {
+    ctx.save();
+    ctx.globalAlpha = bladeSpeed * 0.05;
+    for (let i = 0; i < 5; i++) {
+      const hx = W / 2 + 25 * heliScale + i * 3;
+      const hy = heliY - 38 * heliScale + Math.sin(elapsed * 0.005 + i) * 5;
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.beginPath();
+      ctx.arc(hx + Math.sin(elapsed * 0.01 + i * 2) * 3, hy, 4 + i, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Speed / RPM indicator (subtle)
+  if (bladeSpeed > 0) {
+    ctx.save();
+    ctx.globalAlpha = 0.6;
+    ctx.fillStyle = '#fff';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'left';
+    const rpm = Math.floor(bladeSpeed * 450);
+    ctx.fillText(`Main RPM: ${rpm}`, 20, 30);
+    ctx.fillText(`Phase: ${rawT < PHASE.IDLE.end ? 'IDLE' : rawT < PHASE.SPIN_UP.end ? 'SPIN UP' : rawT < PHASE.FULL_SPEED.end ? 'FULL SPEED' : 'LIFT OFF'}`, 20, 48);
+    ctx.restore();
+  }
+
+  if (rawT < 1) {
+    animId = requestAnimationFrame(animate);
+  }
+}
+
+function start() {
+  startTime = null;
+  dustParticles = [];
+  debrisParticles = [];
+  if (animId) cancelAnimationFrame(animId);
+  animId = requestAnimationFrame(animate);
+}
+
+document.getElementById('restart').addEventListener('click', start);
+start();
+</script>
+</body>
+</html>
