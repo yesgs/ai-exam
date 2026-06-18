@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>抛球小丑 · 瀑布抛接</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at 50% 35%, #3a2a5c 0%, #1a1030 55%, #0a0618 100%);
+  }
+
+  /* 舞台 */
+  .stage {
+    position: relative;
+    width: 640px;
+    height: 560px;
+    max-width: 96vw;
+    max-height: 96vh;
+  }
+
+  /* 聚光灯 */
+  .spotlight {
+    position: absolute;
+    left: 50%;
+    top: -10%;
+    transform: translateX(-50%);
+    width: 520px;
+    height: 620px;
+    background: radial-gradient(ellipse at 50% 0%,
+      rgba(255, 240, 200, 0.28) 0%,
+      rgba(255, 230, 180, 0.10) 35%,
+      rgba(255, 230, 180, 0) 70%);
+    pointer-events: none;
+    filter: blur(2px);
+  }
+
+  /* 地面光圈 */
+  .floor {
+    position: absolute;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 360px;
+    height: 60px;
+    background: radial-gradient(ellipse at 50% 50%,
+      rgba(180, 140, 255, 0.35) 0%,
+      rgba(120, 80, 200, 0.12) 50%,
+      rgba(120, 80, 200, 0) 75%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  svg.clown {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 460px;
+    height: 560px;
+    overflow: visible;
+  }
+
+  /* 小丑整体轻微呼吸 */
+  .breathe {
+    transform-origin: 300px 470px;
+    animation: breathe 3.6s ease-in-out infinite;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(-3px) scale(1.006); }
+  }
+
+  /* 左右手臂轻微摆动 */
+  .arm-left  { transform-origin: 300px 330px; animation: armL 1.2s ease-in-out infinite; }
+  .arm-right { transform-origin: 300px 330px; animation: armR 1.2s ease-in-out infinite; }
+  @keyframes armL {
+    0%, 100% { transform: rotate(0deg); }
+    50%      { transform: rotate(-3deg); }
+  }
+  @keyframes armR {
+    0%, 100% { transform: rotate(0deg); }
+    50%      { transform: rotate(3deg); }
+  }
+
+  /* 头发轻微晃动 */
+  .hair-tuft { transform-box: fill-box; transform-origin: center; }
+  .hair-tuft.t1 { animation: tuft 2.4s ease-in-out infinite; }
+  .hair-tuft.t2 { animation: tuft 2.4s ease-in-out infinite .3s; }
+  .hair-tuft.t3 { animation: tuft 2.4s ease-in-out infinite .6s; }
+  .hair-tuft.t4 { animation: tuft 2.4s ease-in-out infinite .9s; }
+  @keyframes tuft {
+    0%, 100% { transform: rotate(0deg) translateY(0); }
+    50%      { transform: rotate(6deg) translateY(-1px); }
+  }
+
+  /* 球 */
+  .ball {
+    position: absolute;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    top: 0;
+    left: 0;
+    will-change: transform;
+    box-shadow:
+      inset -6px -7px 10px rgba(0,0,0,0.45),
+      inset 5px 5px 8px rgba(255,255,255,0.55),
+      0 6px 12px rgba(0,0,0,0.45);
+  }
+  .ball::after {
+    content: "";
+    position: absolute;
+    left: 7px;
+    top: 6px;
+    width: 10px;
+    height: 7px;
+    background: rgba(255,255,255,0.85);
+    border-radius: 50%;
+    filter: blur(1px);
+  }
+  .ball.red   { background: radial-gradient(circle at 35% 30%, #ff7a6b, #d61f1f 60%, #8c0d0d); }
+  .ball.green { background: radial-gradient(circle at 35% 30%, #8bff8b, #1fae3a 60%, #0d6b22); }
+  .ball.blue  { background: radial-gradient(circle at 35% 30%, #8ecbff, #1f6fd6 60%, #0d3c8c); }
+
+  /* 标题 */
+  .title {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #f3e9ff;
+    letter-spacing: 4px;
+    font-size: 15px;
+    font-weight: 300;
+    opacity: 0.6;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="spotlight"></div>
+    <div class="floor"></div>
+
+    <div class="title">Cascading Juggler</div>
+
+    <!-- 小丑 -->
+    <svg class="clown" viewBox="0 0 600 720" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- 紫色西装渐变 -->
+        <linearGradient id="suitGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stop-color="#7b3fbf"/>
+          <stop offset="55%" stop-color="#5b259a"/>
+          <stop offset="100%" stop-color="#3a1570"/>
+        </linearGradient>
+        <linearGradient id="suitShade" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%"  stop-color="rgba(0,0,0,0.35)"/>
+          <stop offset="50%" stop-color="rgba(0,0,0,0)"/>
+          <stop offset="100%" stop-color="rgba(0,0,0,0.35)"/>
+        </linearGradient>
+        <!-- 脸部渐变 -->
+        <radialGradient id="faceGrad" cx="42%" cy="38%" r="65%">
+          <stop offset="0%"  stop-color="#ffffff"/>
+          <stop offset="70%" stop-color="#f4f0ec"/>
+          <stop offset="100%" stop-color="#d8cfc6"/>
+        </radialGradient>
+        <!-- 头发渐变 -->
+        <radialGradient id="hairGrad" cx="40%" cy="35%" r="70%">
+          <stop offset="0%"  stop-color="#7dffa0"/>
+          <stop offset="60%" stop-color="#28c04a"/>
+          <stop offset="100%" stop-color="#0c6e26"/>
+        </radialGradient>
+        <!-- 鼻子 -->
+        <radialGradient id="noseGrad" cx="35%" cy="32%" r="70%">
+          <stop offset="0%"  stop-color="#ff8a7a"/>
+          <stop offset="70%" stop-color="#e0241c"/>
+          <stop offset="100%" stop-color="#8c0d0d"/>
+        </radialGradient>
+      </defs>
+
+      <g class="breathe">
+
+        <!-- 腿 / 鞋 (简化, 藏在地面光圈附近) -->
+        <rect x="262" y="560" width="30" height="110" rx="12" fill="#2a0f55"/>
+        <rect x="308" y="560" width="30" height="110" rx="12" fill="#2a0f55"/>
+        <ellipse cx="262" cy="675" rx="34" ry="16" fill="#1a1030"/>
+        <ellipse cx="338" cy="675" rx="34" ry="16" fill="#1a1030"/>
+
+        <!-- 西装身体 -->
+        <path d="M210 410
+                 Q300 380 390 410
+                 L420 600
+                 Q300 625 180 600 Z"
+              fill="url(#suitGrad)" stroke="#2a0f55" stroke-width="3"/>
+        <!-- 西装阴影 -->
+        <path d="M210 410 Q300 380 390 410 L420 600 Q300 625 180 600 Z"
+              fill="url(#suitShade)" opacity="0.6"/>
+        <!-- 翻领 -->
+        <path d="M300 395 L255 430 L300 470 L345 430 Z" fill="#4a1d85"/>
+        <path d="M300 395 L272 432 L300 470 L300 395 Z" fill="#3a1570"/>
+        <!-- 衬衫 + 领结 -->
+        <path d="M300 410 L288 470 L312 470 Z" fill="#fdfdfd"/>
+        <path d="M300 458 L278 470 L300 482 L322 470 Z" fill="#e0241c"/>
+        <circle cx="300" cy="470" r="5" fill="#8c0d0d"/>
+        <!-- 扣子 -->
+        <circle cx="300" cy="505" r="5" fill="#ffd34d" stroke="#b8860b" stroke-width="1"/>
+        <circle cx="300" cy="540" r="5" fill="#ffd34d" stroke="#b8860b" stroke-width="1"/>
+        <circle cx="300" cy="575" r="5" fill="#ffd34d" stroke="#b8860b" stroke-width="1"/>
+
+        <!-- 领口褶皱花边 -->
+        <g fill="#fdfdfd" stroke="#d8cfc6" stroke-width="1">
+          <circle cx="265" cy="408" r="9"/>
+          <circle cx="285" cy="402" r="9"/>
+          <circle cx="315" cy="402" r="9"/>
+          <circle cx="335" cy="408" r="9"/>
+        </g>
+
+        <!-- 左手臂 -->
+        <g class="arm-left">
+          <path d="M205 420 Q150 450 135 510 Q132 525 148 528 Q170 532 178 515 Q200 470 225 455 Z"
+                fill="url(#suitGrad)" stroke="#2a0f55" stroke-width="3"/>
+          <!-- 袖口花边 -->
+          <ellipse cx="146" cy="522" rx="20" ry="8" fill="#fdfdfd" stroke="#d8cfc6" stroke-width="1"/>
+          <!-- 左手套手 -->
+          <circle cx="138" cy="528" r="16" fill="#fdfdfd" stroke="#c9bfb4" stroke-width="2"/>
+        </g>
+
+        <!-- 右手臂 -->
+        <g class="arm-right">
+          <path d="M395 420 Q450 450 465 510 Q468 525 452 528 Q430 532 422 515 Q400 470 375 455 Z"
+                fill="url(#suitGrad)" stroke="#2a0f55" stroke-width="3"/>
+          <ellipse cx="454" cy="522" rx="20" ry="8" fill="#fdfdfd" stroke="#d8cfc6" stroke-width="1"/>
+          <!-- 右手套手 -->
+          <circle cx="462" cy="528" r="16" fill="#fdfdfd" stroke="#c9bfb4" stroke-width="2"/>
+        </g>
+
+        <!-- 脖子 -->
+        <rect x="280" y="370" width="40" height="40" fill="url(#faceGrad)"/>
+
+        <!-- 头部 -->
+        <!-- 头发: 后面一圈绿毛 -->
+        <g>
+          <circle class="hair-tuft t1" cx="232" cy="248" r="34" fill="url(#hairGrad)"/>
+          <circle class="hair-tuft t2" cx="368" cy="248" r="34" fill="url(#hairGrad)"/>
+          <circle class="hair-tuft t3" cx="260" cy="198" r="30" fill="url(#hairGrad)"/>
+          <circle class="hair-tuft t4" cx="340" cy="198" r="30" fill="url(#hairGrad)"/>
+          <path d="M220 240 Q300 150 380 240 Q360 180 300 160 Q240 180 220 240 Z"
+                fill="url(#hairGrad)" stroke="#0c6e26" stroke-width="2"/>
+          <!-- 尖角刘海 -->
+          <path d="M270 175 L285 210 L300 180 L315 210 L330 175 Z" fill="url(#hairGrad)" stroke="#0c6e26" stroke-width="1.5"/>
+        </g>
+
+        <!-- 脸 -->
+        <ellipse cx="300" cy="280" rx="78" ry="86" fill="url(#faceGrad)" stroke="#d8cfc6" stroke-width="2"/>
+
+        <!-- 耳朵 -->
+        <ellipse cx="222" cy="285" rx="11" ry="16" fill="url(#faceGrad)" stroke="#d8cfc6" stroke-width="1.5"/>
+        <ellipse cx="378" cy="285" rx="11" ry="16" fill="url(#faceGrad)" stroke="#d8cfc6" stroke-width="1.5"/>
+
+        <!-- 眉毛 (夸张上扬) -->
+        <path d="M250 250 Q265 232 282 252" fill="none" stroke="#1a1030" stroke-width="4" stroke-linecap="round"/>
+        <path d="M318 252 Q335 232 350 250" fill="none" stroke="#1a1030" stroke-width="4" stroke-linecap="round"/>
+
+        <!-- 眼睛 -->
+        <g>
+          <ellipse cx="268" cy="275" rx="10" ry="12" fill="#fff" stroke="#1a1030" stroke-width="2"/>
+          <ellipse cx="332" cy="275" rx="10" ry="12" fill="#fff" stroke="#1a1030" stroke-width="2"/>
+          <circle cx="270" cy="278" r="4.5" fill="#1a1030"/>
+          <circle cx="334" cy="278" r="4.5" fill="#1a1030"/>
+          <circle cx="272" cy="276" r="1.4" fill="#fff"/>
+          <circle cx="336" cy="276" r="1.4" fill="#fff"/>
+        </g>
+
+        <!-- 脸颊红晕 -->
+        <ellipse cx="250" cy="305" rx="14" ry="9" fill="#ff9aa2" opacity="0.65"/>
+        <ellipse cx="350" cy="305" rx="14" ry="9" fill="#ff9aa2" opacity="0.65"/>
+
+        <!-- 鼻子 -->
+        <circle cx="300" cy="305" r="14" fill="url(#noseGrad)" stroke="#8c0d0d" stroke-width="1.5"/>
+        <circle cx="296" cy="301" r="3.5" fill="rgba(255,255,255,0.7)"/>
+
+        <!-- 嘴巴 (大红微笑) -->
+        <path d="M258 330 Q300 372 342 330 Q300 348 258 330 Z" fill="#e0241c" stroke="#8c0d0d" stroke-width="2"/>
+        <path d="M258 330 Q300 372 342 330" fill="none" stroke="#8c0d0d" stroke-width="2.5"/>
+        <!-- 牙齿 -->
+        <rect x="288" y="334" width="24" height="8" rx="2" fill="#fff" stroke="#8c0d0d" stroke-width="1"/>
+
+        <!-- 嘴角上挑星标 -->
+        <circle cx="256" cy="328" r="3" fill="#ffd34d"/>
+        <circle cx="344" cy="328" r="3" fill="#ffd34d"/>
+
+      </g>
+    </svg>
+
+    <!-- 三个球 -->
+    <div class="ball red"   id="ball0"></div>
+    <div class="ball green" id="ball1"></div>
+    <div class="ball blue"  id="ball2"></div>
+  </div>
+
+<script>
+(function () {
+  const stage   = document.getElementById('stage');
+  const balls   = [
+    document.getElementById('ball0'),
+    document.getElementById('ball1'),
+    document.getElementById('ball2'),
+  ];
+
+  // 瀑布抛接(Cascade)参数
+  // 小丑的两只手在舞台坐标中的位置(像素)
+  const HAND_L = { x: 138, y: 300 };  // 左手(屏幕左侧)
+  const HAND_R = { x: 502, y: 300 };  // 右手(屏幕右侧)
+  const ARC_H  = 250;                 // 抛物线最高点离手的高度
+  const CYCLE  = 1500;                // 一个完整循环时长(ms): R->L->R
+  // 三球相位偏移, 形成"瀑布"连续效果
+  const PHASE_OFFSET = CYCLE / 3;
+
+  // 球在舞台坐标系下的尺寸(与CSS一致)
+  const BALL = 34;
+
+  function parabolaY(t, yHand, arcH) {
+    // t: 0..1, 返回抛物线 y 值(屏幕坐标, 向下为正)
+    // y = yHand - 4 * arcH * t * (1-t)
+    return yHand - 4 * arcH * t * (1 - t);
+  }
+
+  function ballPosition(phase) {
+    // phase: 0..CYCLE
+    // 0..CYCLE/2 : 右手 -> 左手
+    // CYCLE/2..CYCLE : 左手 -> 右手
+    const half = CYCLE / 2;
+    let x, y, t;
+    if (phase < half) {
+      t = phase / half;            // 0..1
+      x = HAND_R.x + (HAND_L.x - HAND_R.x) * t;
+      y = parabolaY(t, HAND_R.y, ARC_H);
+    } else {
+      t = (phase - half) / half;   // 0..1
+      x = HAND_L.x + (HAND_R.x - HAND_L.x) * t;
+      y = parabolaY(t, HAND_L.y, ARC_H);
+    }
+    // 球中心定位 -> 左上角偏移
+    return { x: x - BALL / 2, y: y - BALL / 2, cx: x, cy: y };
+  }
+
+  // 让球在接近手时略微被"挤压", 增加手感
+  function squashScale(phase) {
+    const half = CYCLE / 2;
+    // 在 phase 接近 0, half, CYCLE 时为接球瞬间
+    const eps = 90; // ms
+    let d = Math.min(phase, Math.abs(phase - half), Math.abs(phase - CYCLE));
+    if (d < eps) {
+      const k = 1 - d / eps;       // 0..1
+      return { sx: 1 + 0.18 * k, sy: 1 - 0.18 * k };
+    }
+    return { sx: 1, sy: 1 };
+  }
+
+  let start = null;
+  function loop(ts) {
+    if (start === null) start = ts;
+    const elapsed = ts - start;
+
+    for (let i = 0; i < balls.length; i++) {
+      // 每个球的相位
+      let phase = (elapsed + i * PHASE_OFFSET) % CYCLE;
+      const pos = ballPosition(phase);
+      const sc  = squashScale(phase);
+      balls[i].style.transform =
+        'translate(' + pos.x + 'px,' + pos.y + 'px) scale(' + sc.sx + ',' + sc.sy + ')';
+    }
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // 窗口缩放时不需要重算, 因为舞台尺寸固定; 但保证小屏不被裁切
+  window.addEventListener('resize', () => {}, { passive: true });
+})();
+</script>
+</body>
+</html>

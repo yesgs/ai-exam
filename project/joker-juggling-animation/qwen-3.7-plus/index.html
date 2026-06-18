@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小丑抛球动画</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: radial-gradient(ellipse at center, #2a1545 0%, #0d0221 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: sans-serif;
+  }
+  canvas {
+    display: block;
+    image-rendering: auto;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// 画布尺寸
+const W = 700, H = 700;
+canvas.width = W;
+canvas.height = H;
+
+// ====== 颜色常量 ======
+const PURPLE_DARK = '#5a189a';
+const PURPLE = '#7b2cbf';
+const PURPLE_LIGHT = '#9d4edd';
+const GREEN_HAIR = '#38b000';
+const GREEN_HAIR_LIGHT = '#70e000';
+const WHITE_FACE = '#f8f8f8';
+const RED_BALL = '#e63946';
+const GREEN_BALL = '#2dc653';
+const BLUE_BALL = '#0096c7';
+const YELLOW = '#ffd60a';
+const PINK = '#ff006e';
+const SKIN = '#fff5ee';
+
+// ====== 小丑参数 ======
+const jokerX = W / 2;
+const jokerBottom = H - 60;
+
+// ====== 抛接参数 ======
+const BALL_RADIUS = 16;
+const THROW_DURATION = 0.6;   // 球在空中飞行时间(秒)
+const HOLD_DURATION = 0.15;   // 球在手中停留时间(秒)
+const BALL_CYCLE = THROW_DURATION + HOLD_DURATION; // 单球完整周期
+const PHASE_OFFSET = BALL_CYCLE / 3; // 三球相位差
+
+// 手的位置（相对jokerX）
+const HAND_SPREAD = 80;
+const LEFT_HAND_X = jokerX - HAND_SPREAD;
+const RIGHT_HAND_X = jokerX + HAND_SPREAD;
+const HAND_Y = jokerBottom - 195; // 手部y坐标
+const THROW_HEIGHT = 200; // 抛球最高点相对手的高度
+
+// ====== 工具函数 ======
+function lerp(a, b, t) { return a + (b - a) * t; }
+function easeInOut(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t+2, 2)/2; }
+
+// 抛物线 y 值：t=0 和 t=1 时 y=0，t=0.5 时 y=-height
+function arcY(t, height) {
+  return -4 * height * t * (1 - t);
+}
+
+// ====== 绘制函数 ======
+
+// 绘制阴影
+function drawShadow() {
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(jokerX, jokerBottom + 10, 70, 12, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fill();
+  ctx.restore();
+}
+
+// 绘制腿和鞋
+function drawLegs() {
+  const legW = 26, legH = 100;
+  const shoeW = 44, shoeH = 18;
+  const gap = 22;
+
+  // 左腿
+  const lx = jokerX - gap - legW/2;
+  const ly = jokerBottom - legH;
+  ctx.fillStyle = PURPLE_DARK;
+  roundRect(lx, ly, legW, legH, 10);
+
+  // 右腿
+  const rx = jokerX + gap - legW/2;
+  roundRect(rx, ly, legW, legH, 10);
+
+  // 鞋子
+  ctx.fillStyle = '#1a1a1a';
+  roundRect(lx - 8, jokerBottom - 8, shoeW, shoeH, 8);
+  roundRect(rx - 8, jokerBottom - 8, shoeW, shoeH, 8);
+}
+
+// 绘制身体
+function drawBody() {
+  const bw = 90, bh = 120;
+  const bx = jokerX - bw/2;
+  const by = jokerBottom - 100 - bh;
+
+  // 身体
+  const grad = ctx.createLinearGradient(bx, by, bx, by + bh);
+  grad.addColorStop(0, PURPLE_LIGHT);
+  grad.addColorStop(1, PURPLE);
+  ctx.fillStyle = grad;
+  roundRect(bx, by, bw, bh, 35);
+
+  // 领结
+  drawBowtie(jokerX, by + 5);
+
+  // 纽扣
+  ctx.fillStyle = YELLOW;
+  for (let i = 0; i < 3; i++) {
+    ctx.beginPath();
+    ctx.arc(jokerX, by + 40 + i * 28, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// 领结
+function drawBowtie(cx, cy) {
+  ctx.fillStyle = PINK;
+  // 左三角
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx - 22, cy - 10);
+  ctx.lineTo(cx - 22, cy + 10);
+  ctx.closePath();
+  ctx.fill();
+  // 右三角
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + 22, cy - 10);
+  ctx.lineTo(cx + 22, cy + 10);
+  ctx.closePath();
+  ctx.fill();
+  // 中心圆
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// 绘制手臂（带摆动）
+function drawArms(time) {
+  const shoulderY = jokerBottom - 100 - 100;
+  const armLen = 65;
+
+  // 手臂摆动角度基于时间
+  const cycle = (time % BALL_CYCLE) / BALL_CYCLE;
+  const leftSwing = Math.sin(cycle * Math.PI * 2) * 20;
+  const rightSwing = Math.sin((cycle + 0.5) * Math.PI * 2) * 20;
+
+  // 左臂
+  drawArm(jokerX - 45, shoulderY, armLen, -60 + leftSwing, true);
+  // 右臂
+  drawArm(jokerX + 45, shoulderY, armLen, 60 + rightSwing, false);
+}
+
+function drawArm(sx, sy, len, angleDeg, isLeft) {
+  const angle = angleDeg * Math.PI / 180;
+  const ex = sx + Math.sin(angle) * len;
+  const ey = sy + Math.cos(angle) * len;
+
+  ctx.save();
+  ctx.strokeStyle = PURPLE;
+  ctx.lineWidth = 16;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+
+  // 手（白色圆）
+  ctx.fillStyle = WHITE_FACE;
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(ex, ey, 12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+// 绘制头
+function drawHead() {
+  const hx = jokerX;
+  const hy = jokerBottom - 100 - 120 - 45;
+  const hw = 42, hh = 48;
+
+  // 头发（后层）
+  ctx.fillStyle = GREEN_HAIR;
+  ctx.beginPath();
+  ctx.ellipse(hx - 30, hy - 15, 28, 30, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(hx + 30, hy - 15, 28, 30, 0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(hx, hy - 30, 30, 22, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 脸（白色）
+  ctx.fillStyle = WHITE_FACE;
+  ctx.beginPath();
+  ctx.ellipse(hx, hy, hw, hh, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 头发前层（刘海）
+  ctx.fillStyle = GREEN_HAIR_LIGHT;
+  ctx.beginPath();
+  ctx.ellipse(hx, hy - 35, 25, 15, 0, 0, Math.PI);
+  ctx.fill();
+
+  // 眼睛
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.ellipse(hx - 15, hy - 5, 5, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(hx + 15, hy - 5, 5, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // 眼睛高光
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(hx - 13, hy - 8, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(hx + 17, hy - 8, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 红鼻子
+  ctx.fillStyle = PINK;
+  ctx.beginPath();
+  ctx.arc(hx, hy + 10, 9, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 嘴巴（微笑）
+  ctx.strokeStyle = PINK;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.arc(hx, hy + 18, 16, 0.15 * Math.PI, 0.85 * Math.PI);
+  ctx.stroke();
+
+  // 帽子
+  drawHat(hx, hy - hh + 5);
+}
+
+// 帽子
+function drawHat(cx, topY) {
+  // 帽身（三角）
+  const grad = ctx.createLinearGradient(cx, topY - 65, cx, topY);
+  grad.addColorStop(0, PURPLE_LIGHT);
+  grad.addColorStop(1, PURPLE);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(cx, topY - 65);
+  ctx.lineTo(cx - 32, topY);
+  ctx.lineTo(cx + 32, topY);
+  ctx.closePath();
+  ctx.fill();
+
+  // 帽檐
+  ctx.fillStyle = PURPLE_DARK;
+  ctx.beginPath();
+  ctx.ellipse(cx, topY, 42, 8, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 帽顶球
+  ctx.fillStyle = YELLOW;
+  ctx.beginPath();
+  ctx.arc(cx, topY - 65, 7, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// 绘制球
+function drawBalls(time) {
+  const ballColors = [RED_BALL, GREEN_BALL, BLUE_BALL];
+
+  for (let i = 0; i < 3; i++) {
+    // 每个球的时间偏移
+    const t = (time + i * PHASE_OFFSET) % BALL_CYCLE;
+    let x, y;
+
+    if (t < THROW_DURATION) {
+      // 飞行阶段
+      const p = t / THROW_DURATION;
+      // 奇数球从左到右，偶数球从右到左（交替）
+      const fromX = (i % 2 === 0) ? LEFT_HAND_X : RIGHT_HAND_X;
+      const toX = (i % 2 === 0) ? RIGHT_HAND_X : LEFT_HAND_X;
+      x = lerp(fromX, toX, p);
+      y = HAND_Y + arcY(p, THROW_HEIGHT);
+    } else {
+      // 手中停留
+      const holdX = (i % 2 === 0) ? RIGHT_HAND_X : LEFT_HAND_X;
+      x = holdX;
+      y = HAND_Y;
+    }
+
+    // 球体
+    const grad = ctx.createRadialGradient(x - 4, y - 4, 2, x, y, BALL_RADIUS);
+    grad.addColorStop(0, lighten(ballColors[i], 40));
+    grad.addColorStop(1, ballColors[i]);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, BALL_RADIUS, 0, Math.PI * 2);
+    ctx.fill();
+
+    // 球高光
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.beginPath();
+    ctx.arc(x - 4, y - 5, 5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// 颜色变亮
+function lighten(hex, amount) {
+  const r = parseInt(hex.slice(1,3), 16);
+  const g = parseInt(hex.slice(3,5), 16);
+  const b = parseInt(hex.slice(5,7), 16);
+  return `rgb(${Math.min(255,r+amount)},${Math.min(255,g+amount)},${Math.min(255,b+amount)})`;
+}
+
+// 圆角矩形
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// 绘制背景粒子
+const particles = [];
+for (let i = 0; i < 30; i++) {
+  particles.push({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    r: Math.random() * 2 + 0.5,
+    speed: Math.random() * 0.3 + 0.1,
+    alpha: Math.random() * 0.5 + 0.2
+  });
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    p.y -= p.speed;
+    if (p.y < -5) { p.y = H + 5; p.x = Math.random() * W; }
+    ctx.fillStyle = `rgba(255,255,255,${p.alpha})`;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+// ====== 主循环 ======
+let startTime = null;
+
+function render(timestamp) {
+  if (!startTime) startTime = timestamp;
+  const time = (timestamp - startTime) / 1000; // 秒
+
+  ctx.clearRect(0, 0, W, H);
+
+  drawParticles();
+  drawShadow();
+  drawLegs();
+  drawBody();
+  drawArms(time);
+  drawHead();
+  drawBalls(time);
+
+  requestAnimationFrame(render);
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

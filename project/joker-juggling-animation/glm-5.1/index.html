@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小丑抛球动画</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d0a1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+const W = 660, H = 700;
+cvs.width = W; cvs.height = H;
+
+// ====== 颜色 ======
+const C = {
+  purpleDark: '#4a0e78', purple: '#7b2cbf', purpleLight: '#9d4edd',
+  greenHair: '#2d9e00', greenHairHi: '#5ccc00',
+  face: '#f5f0eb', faceShadow: '#e8ddd5',
+  red: '#e63946', green: '#2dc653', blue: '#0077b6',
+  pink: '#ff006e', yellow: '#ffd60a', black: '#111',
+};
+
+// ====== 小丑位置 ======
+const JX = W / 2, JY = H - 80; // 脚底
+
+// ====== 抛接参数 ======
+const BALL_R = 15;
+const HAND_LX = JX - 95, HAND_RX = JX + 95;
+const HAND_Y = JY - 200;
+const ARC_H = 210;
+const CYCLE = 1.1; // 秒
+const PHASE = CYCLE / 3;
+
+// ====== 背景星星 ======
+const stars = Array.from({length: 40}, () => ({
+  x: Math.random() * W, y: Math.random() * H,
+  r: Math.random() * 1.5 + 0.3, a: Math.random() * 0.6 + 0.1,
+  sp: Math.random() * 0.15 + 0.05
+}));
+
+function drawBg(t) {
+  // 渐变背景
+  const bg = ctx.createRadialGradient(W/2, H*0.45, 50, W/2, H*0.45, 420);
+  bg.addColorStop(0, '#1f1040');
+  bg.addColorStop(1, '#0d0a1a');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // 聚光灯
+  const spot = ctx.createRadialGradient(W/2, H*0.35, 10, W/2, H*0.35, 280);
+  spot.addColorStop(0, 'rgba(157,78,221,0.08)');
+  spot.addColorStop(1, 'transparent');
+  ctx.fillStyle = spot;
+  ctx.fillRect(0, 0, W, H);
+
+  // 星星
+  stars.forEach(s => {
+    s.y -= s.sp;
+    if (s.y < -2) { s.y = H + 2; s.x = Math.random() * W; }
+    ctx.globalAlpha = s.a * (0.6 + 0.4 * Math.sin(t * 2 + s.x));
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ====== 绘制小丑 ======
+function drawJoker(t) {
+  // 地面阴影
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath(); ctx.ellipse(JX, JY + 12, 65, 14, 0, 0, Math.PI*2); ctx.fill();
+
+  // 腿
+  drawLeg(JX - 22, JY - 10);
+  drawLeg(JX + 22, JY - 10);
+
+  // 身体
+  drawBody();
+
+  // 手臂
+  drawArms(t);
+
+  // 头
+  drawHead();
+}
+
+function drawLeg(cx, bottom) {
+  // 裤腿
+  const grad = ctx.createLinearGradient(cx, bottom - 95, cx, bottom);
+  grad.addColorStop(0, C.purple);
+  grad.addColorStop(1, C.purpleDark);
+  ctx.fillStyle = grad;
+  roundRect(cx - 14, bottom - 95, 28, 95, 12);
+
+  // 鞋
+  ctx.fillStyle = '#1a1a1a';
+  roundRect(cx - 20, bottom - 8, 40, 18, 9);
+}
+
+function drawBody() {
+  const bx = JX - 46, by = JY - 105 - 115;
+  // 身体
+  const grad = ctx.createLinearGradient(bx, by, bx + 92, by + 115);
+  grad.addColorStop(0, C.purpleLight);
+  grad.addColorStop(1, C.purple);
+  ctx.fillStyle = grad;
+  roundRect(bx, by, 92, 115, 32);
+
+  // 领结
+  drawBowtie(JX, by + 8);
+
+  // 纽扣
+  ctx.fillStyle = C.yellow;
+  [38, 65, 92].forEach(dy => {
+    ctx.beginPath(); ctx.arc(JX, by + dy, 5, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#e6c200'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(JX, by + dy, 5, 0, Math.PI*2); ctx.stroke();
+  });
+}
+
+function drawBowtie(cx, cy) {
+  ctx.fillStyle = C.pink;
+  // 左翼
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.quadraticCurveTo(cx - 14, cy - 12, cx - 24, cy - 8);
+  ctx.quadraticCurveTo(cx - 26, cy, cx - 24, cy + 8);
+  ctx.quadraticCurveTo(cx - 14, cy + 12, cx, cy);
+  ctx.fill();
+  // 右翼
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  ctx.quadraticCurveTo(cx + 14, cy - 12, cx + 24, cy - 8);
+  ctx.quadraticCurveTo(cx + 26, cy, cx + 24, cy + 8);
+  ctx.quadraticCurveTo(cx + 14, cy + 12, cx, cy);
+  ctx.fill();
+  // 中心
+  ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI*2); ctx.fill();
+}
+
+function drawArms(t) {
+  const shoulderY = JY - 105 - 108;
+  const armLen = 62;
+  const cycle = (t % CYCLE) / CYCLE;
+
+  // 左臂摆动
+  const lSwing = -55 - Math.max(0, Math.sin(cycle * Math.PI * 2)) * 22;
+  // 右臂摆动
+  const rSwing = 55 + Math.max(0, Math.sin((cycle + 0.33) * Math.PI * 2)) * 22;
+
+  drawArm(JX - 46, shoulderY, armLen, lSwing);
+  drawArm(JX + 46, shoulderY, armLen, rSwing);
+}
+
+function drawArm(sx, sy, len, angleDeg) {
+  const a = angleDeg * Math.PI / 180;
+  const ex = sx + Math.sin(a) * len;
+  const ey = sy + Math.cos(a) * len;
+
+  // 袖子
+  ctx.strokeStyle = C.purple;
+  ctx.lineWidth = 15;
+  ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+
+  // 手
+  ctx.fillStyle = C.face;
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(ex, ey, 13, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+}
+
+function drawHead() {
+  const hx = JX, hy = JY - 105 - 115 - 44;
+
+  // 头发（后层）
+  ctx.fillStyle = C.greenHair;
+  ctx.beginPath(); ctx.ellipse(hx - 28, hy - 12, 26, 30, -0.25, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(hx + 28, hy - 12, 26, 30, 0.25, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(hx, hy - 28, 28, 20, 0, 0, Math.PI*2); ctx.fill();
+
+  // 脸
+  const faceGrad = ctx.createRadialGradient(hx - 5, hy - 8, 5, hx, hy, 44);
+  faceGrad.addColorStop(0, '#fff');
+  faceGrad.addColorStop(1, C.faceShadow);
+  ctx.fillStyle = faceGrad;
+  ctx.beginPath(); ctx.ellipse(hx, hy, 40, 46, 0, 0, Math.PI*2); ctx.fill();
+
+  // 刘海
+  ctx.fillStyle = C.greenHairHi;
+  ctx.beginPath(); ctx.ellipse(hx, hy - 32, 22, 14, 0, 0, Math.PI); ctx.fill();
+
+  // 眼睛
+  ctx.fillStyle = C.black;
+  ctx.beginPath(); ctx.ellipse(hx - 14, hy - 6, 5, 8, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(hx + 14, hy - 6, 5, 8, 0, 0, Math.PI*2); ctx.fill();
+  // 高光
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(hx - 12, hy - 9, 2.5, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(hx + 16, hy - 9, 2.5, 0, Math.PI*2); ctx.fill();
+
+  // 红鼻子
+  const noseGrad = ctx.createRadialGradient(hx - 2, hy + 8, 2, hx, hy + 10, 10);
+  noseGrad.addColorStop(0, '#ff4d6d');
+  noseGrad.addColorStop(1, C.pink);
+  ctx.fillStyle = noseGrad;
+  ctx.beginPath(); ctx.arc(hx, hy + 10, 9, 0, Math.PI*2); ctx.fill();
+
+  // 嘴
+  ctx.strokeStyle = C.pink;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.arc(hx, hy + 20, 15, 0.15*Math.PI, 0.85*Math.PI); ctx.stroke();
+
+  // 腮红
+  ctx.fillStyle = 'rgba(255,0,110,0.1)';
+  ctx.beginPath(); ctx.ellipse(hx - 26, hy + 12, 12, 7, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(hx + 26, hy + 12, 12, 7, 0, 0, Math.PI*2); ctx.fill();
+
+  // 帽子
+  drawHat(hx, hy - 46);
+}
+
+function drawHat(cx, baseY) {
+  // 帽身
+  const grad = ctx.createLinearGradient(cx, baseY - 72, cx, baseY);
+  grad.addColorStop(0, C.purpleLight);
+  grad.addColorStop(1, C.purple);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(cx, baseY - 72);
+  ctx.lineTo(cx - 30, baseY);
+  ctx.lineTo(cx + 30, baseY);
+  ctx.closePath();
+  ctx.fill();
+
+  // 帽檐
+  ctx.fillStyle = C.purpleDark;
+  ctx.beginPath(); ctx.ellipse(cx, baseY, 40, 8, 0, 0, Math.PI*2); ctx.fill();
+
+  // 顶部球
+  ctx.fillStyle = C.yellow;
+  ctx.beginPath(); ctx.arc(cx, baseY - 72, 7, 0, Math.PI*2); ctx.fill();
+}
+
+// ====== 球 ======
+function drawBalls(t) {
+  const colors = [
+    { main: C.red,   hi: '#ff8a94' },
+    { main: C.green, hi: '#7bed9f' },
+    { main: C.blue,  hi: '#70a1ff' }
+  ];
+
+  for (let i = 0; i < 3; i++) {
+    const localT = (t + i * PHASE) % CYCLE;
+    const phase = localT / CYCLE;
+    const pos = cascadePos(i, phase);
+
+    // 球体
+    const g = ctx.createRadialGradient(pos.x - 4, pos.y - 4, 2, pos.x, pos.y, BALL_R);
+    g.addColorStop(0, colors[i].hi);
+    g.addColorStop(1, colors[i].main);
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, BALL_R, 0, Math.PI*2); ctx.fill();
+
+    // 高光
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.beginPath(); ctx.ellipse(pos.x - 4, pos.y - 5, 5, 4, -0.3, 0, Math.PI*2); ctx.fill();
+
+    // 球影
+    ctx.fillStyle = 'rgba(0,0,0,0.15)';
+    ctx.beginPath(); ctx.ellipse(pos.x + 3, pos.y + BALL_R + 4, BALL_R * 0.7, 4, 0, 0, Math.PI*2); ctx.fill();
+  }
+}
+
+function cascadePos(idx, phase) {
+  const flight = 0.72;
+  let x, y;
+
+  if (phase < flight) {
+    const p = phase / flight;
+    const fromX = (idx % 2 === 0) ? HAND_LX : HAND_RX;
+    const toX   = (idx % 2 === 0) ? HAND_RX : HAND_LX;
+    // 水平：轻微弧线
+    const midX = (fromX + toX) / 2 + (idx % 2 === 0 ? -15 : 15);
+    x = bezier3(p, fromX, midX, toX);
+    // 垂直：抛物线
+    y = bezier3(p, HAND_Y, HAND_Y - ARC_H, HAND_Y);
+  } else {
+    const holdX = (idx % 2 === 0) ? HAND_RX : HAND_LX;
+    x = holdX;
+    y = HAND_Y;
+  }
+
+  return { x, y };
+}
+
+function bezier3(t, a, b, c) {
+  const mt = 1 - t;
+  return mt*mt*a + 2*mt*t*b + t*t*c;
+}
+
+// ====== 工具 ======
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+  ctx.fill();
+}
+
+// ====== 主循环 ======
+let t0 = null;
+function loop(ts) {
+  if (!t0) t0 = ts;
+  const t = (ts - t0) / 1000;
+
+  ctx.clearRect(0, 0, W, H);
+  drawBg(t);
+  drawJoker(t);
+  drawBalls(t);
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

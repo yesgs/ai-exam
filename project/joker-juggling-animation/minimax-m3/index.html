@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>小丑杂耍 - 瀑布模式</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    background: radial-gradient(ellipse at center, #2a1a4a 0%, #0a0418 70%, #000 100%);
+    overflow: hidden;
+    font-family: 'Comic Sans MS', cursive, sans-serif;
+  }
+
+  .stage {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* 舞台聚光灯 */
+  .spotlight {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 800px;
+    height: 800px;
+    background: radial-gradient(circle, rgba(255, 240, 180, 0.18) 0%, rgba(255, 240, 180, 0) 60%);
+    pointer-events: none;
+  }
+
+  /* 地面阴影 */
+  .ground {
+    position: absolute;
+    bottom: 8%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 380px;
+    height: 40px;
+    background: radial-gradient(ellipse, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0) 70%);
+    border-radius: 50%;
+  }
+
+  /* 小丑角色 */
+  .joker {
+    position: absolute;
+    bottom: 8%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 220px;
+    height: 460px;
+  }
+
+  /* 身体（紫色西装） */
+  .body {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 280px;
+    background: linear-gradient(135deg, #6a1b9a 0%, #4a148c 50%, #3a0a6a 100%);
+    border-radius: 90px 90px 30px 30px;
+    z-index: 2;
+    box-shadow: inset -10px -10px 30px rgba(0,0,0,0.4), inset 10px 10px 20px rgba(255,255,255,0.1);
+  }
+
+  /* 西装翻领 */
+  .lapel-left, .lapel-right {
+    position: absolute;
+    top: 30px;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    z-index: 3;
+  }
+  .lapel-left {
+    left: 35px;
+    border-width: 90px 0 0 50px;
+    border-color: transparent transparent transparent #2a0858;
+  }
+  .lapel-right {
+    right: 35px;
+    border-width: 0 0 90px 50px;
+    border-color: transparent transparent #2a0858 transparent;
+  }
+
+  /* 衬衫 */
+  .shirt {
+    position: absolute;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 140px;
+    background: #f5f5f5;
+    border-radius: 10px 10px 0 0;
+    z-index: 2;
+  }
+
+  /* 领结/领带 */
+  .bowtie {
+    position: absolute;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 30px;
+    z-index: 4;
+  }
+  .bowtie::before, .bowtie::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    width: 24px;
+    height: 26px;
+    background: #00c853;
+    border-radius: 4px;
+  }
+  .bowtie::before { left: 0; transform: skewY(-6deg); }
+  .bowtie::after { right: 0; transform: skewY(6deg); }
+  .bowtie .knot {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 18px;
+    background: #00a040;
+    border-radius: 3px;
+    z-index: 1;
+  }
+
+  /* 纽扣 */
+  .button {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 12px;
+    height: 12px;
+    background: radial-gradient(circle, #ffd700 0%, #b8860b 100%);
+    border-radius: 50%;
+    z-index: 3;
+    box-shadow: 0 0 4px rgba(255, 215, 0, 0.5);
+  }
+  .button.b1 { top: 100px; }
+  .button.b2 { top: 150px; }
+  .button.b3 { top: 200px; }
+
+  /* 头（白色脸） */
+  .head {
+    position: absolute;
+    bottom: 260px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 160px;
+    height: 170px;
+    background: linear-gradient(180deg, #ffffff 0%, #f0f0f0 100%);
+    border-radius: 50%;
+    z-index: 5;
+    box-shadow: inset -8px -8px 20px rgba(0,0,0,0.1);
+  }
+
+  /* 绿色头发 */
+  .hair {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 180px;
+    height: 90px;
+    background: linear-gradient(180deg, #00e676 0%, #00c853 50%, #009624 100%);
+    border-radius: 90px 90px 20px 20px;
+    z-index: 4;
+  }
+  /* 头发尖刺 */
+  .hair::before, .hair::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    width: 20px;
+    height: 25px;
+    background: #00c853;
+    clip-path: polygon(50% 100%, 0 0, 100% 0);
+  }
+  .hair::before { left: 25px; }
+  .hair::after { right: 25px; }
+
+  /* 眼睛 */
+  .eye {
+    position: absolute;
+    top: 75px;
+    width: 36px;
+    height: 44px;
+    background: #fff;
+    border: 2px solid #000;
+    border-radius: 50%;
+    z-index: 6;
+    overflow: hidden;
+  }
+  .eye.left { left: 28px; }
+  .eye.right { right: 28px; }
+  .pupil {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 16px;
+    height: 20px;
+    background: #1a0033;
+    border-radius: 50%;
+  }
+  .pupil::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 6px;
+    height: 6px;
+    background: #fff;
+    border-radius: 50%;
+  }
+
+  /* 紫色眼影 */
+  .eyeshadow {
+    position: absolute;
+    top: 60px;
+    width: 50px;
+    height: 18px;
+    background: #6a1b9a;
+    border-radius: 50%;
+    z-index: 5;
+    opacity: 0.7;
+  }
+  .eyeshadow.left { left: 22px; }
+  .eyeshadow.right { right: 22px; }
+
+  /* 鼻子 */
+  .nose {
+    position: absolute;
+    top: 115px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 14px;
+    height: 18px;
+    background: #e0e0e0;
+    border-radius: 50%;
+    z-index: 6;
+  }
+
+  /* 嘴（咧嘴笑） */
+  .mouth {
+    position: absolute;
+    top: 138px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90px;
+    height: 22px;
+    background: #c62828;
+    border: 2px solid #000;
+    border-radius: 0 0 50px 50px;
+    z-index: 6;
+    overflow: hidden;
+  }
+  .mouth::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 86px;
+    height: 4px;
+    background: #fff;
+  }
+  /* 牙齿 */
+  .teeth {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 60px;
+    height: 10px;
+    display: flex;
+    z-index: 7;
+  }
+  .teeth span {
+    flex: 1;
+    background: #fff;
+    border-right: 1px solid #000;
+  }
+  .teeth span:last-child { border-right: none; }
+
+  /* 手臂 */
+  .arm {
+    position: absolute;
+    width: 28px;
+    height: 160px;
+    background: linear-gradient(180deg, #6a1b9a 0%, #4a148c 100%);
+    border-radius: 20px;
+    z-index: 1;
+    transform-origin: top center;
+  }
+  .arm .hand {
+    position: absolute;
+    bottom: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 36px;
+    background: #ffffff;
+    border-radius: 50%;
+    box-shadow: inset -3px -3px 6px rgba(0,0,0,0.15);
+  }
+  /* 左臂 */
+  .arm.left {
+    top: 60px;
+    left: 8px;
+    transform-origin: top center;
+  }
+  /* 右臂 */
+  .arm.right {
+    top: 60px;
+    right: 8px;
+    transform-origin: top center;
+  }
+
+  /* 彩球 */
+  .ball {
+    position: absolute;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    z-index: 10;
+    box-shadow: inset -6px -6px 12px rgba(0,0,0,0.4), inset 4px 4px 8px rgba(255,255,255,0.5), 0 4px 12px rgba(0,0,0,0.5);
+    will-change: transform;
+  }
+  .ball.red {
+    background: radial-gradient(circle at 30% 30%, #ff7961, #d50000 60%, #8b0000 100%);
+  }
+  .ball.green {
+    background: radial-gradient(circle at 30% 30%, #69f0ae, #00c853 60%, #006400 100%);
+  }
+  .ball.blue {
+    background: radial-gradient(circle at 30% 30%, #82b1ff, #2962ff 60%, #00008b 100%);
+  }
+  /* 球的高光 */
+  .ball::after {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 8px;
+    width: 8px;
+    height: 8px;
+    background: rgba(255,255,255,0.7);
+    border-radius: 50%;
+  }
+
+  /* 标题 */
+  .title {
+    position: absolute;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #ffd700;
+    font-size: 32px;
+    font-weight: bold;
+    text-shadow: 0 0 10px #ff6f00, 0 0 20px #ff6f00, 0 0 30px #e65100;
+    letter-spacing: 4px;
+    z-index: 100;
+    animation: titlePulse 2s ease-in-out infinite;
+  }
+  @keyframes titlePulse {
+    0%, 100% { transform: translateX(-50%) scale(1); opacity: 1; }
+    50% { transform: translateX(-50%) scale(1.05); opacity: 0.85; }
+  }
+
+  /* 装饰小星 */
+  .star {
+    position: absolute;
+    color: #fff;
+    font-size: 20px;
+    opacity: 0.6;
+    animation: twinkle 3s ease-in-out infinite;
+  }
+  @keyframes twinkle {
+    0%, 100% { opacity: 0.2; transform: scale(0.8); }
+    50% { opacity: 0.8; transform: scale(1.2); }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="spotlight"></div>
+    <div class="title">★ JOKER'S WATERFALL ★</div>
+
+    <!-- 装饰星 -->
+    <div class="star" style="top: 15%; left: 10%;">✦</div>
+    <div class="star" style="top: 25%; left: 85%; animation-delay: 0.5s;">✧</div>
+    <div class="star" style="top: 60%; left: 8%; animation-delay: 1s;">✦</div>
+    <div class="star" style="top: 70%; left: 90%; animation-delay: 1.5s;">✧</div>
+    <div class="star" style="top: 40%; left: 92%; animation-delay: 0.8s;">✦</div>
+
+    <div class="ground"></div>
+
+    <!-- 小丑角色 -->
+    <div class="joker">
+      <!-- 身体 -->
+      <div class="body"></div>
+      <div class="shirt"></div>
+      <div class="lapel-left"></div>
+      <div class="lapel-right"></div>
+      <div class="bowtie"><div class="knot"></div></div>
+      <div class="button b1"></div>
+      <div class="button b2"></div>
+      <div class="button b3"></div>
+
+      <!-- 头部 -->
+      <div class="head"></div>
+      <div class="hair"></div>
+      <div class="eyeshadow left"></div>
+      <div class="eyeshadow right"></div>
+      <div class="eye left"><div class="pupil"></div></div>
+      <div class="eye right"><div class="pupil"></div></div>
+      <div class="nose"></div>
+      <div class="mouth"></div>
+      <div class="teeth"><span></span><span></span><span></span><span></span><span></span></div>
+
+      <!-- 手臂 -->
+      <div class="arm left" id="armLeft">
+        <div class="hand"></div>
+      </div>
+      <div class="arm right" id="armRight">
+        <div class="hand"></div>
+      </div>
+    </div>
+
+    <!-- 彩球 -->
+    <div class="ball red" id="ball1"></div>
+    <div class="ball green" id="ball2"></div>
+    <div class="ball blue" id="ball3"></div>
+  </div>
+
+<script>
+(() => {
+  const joker = document.querySelector('.joker');
+  const armLeft = document.getElementById('armLeft');
+  const armRight = document.getElementById('armRight');
+  const balls = [
+    document.getElementById('ball1'),
+    document.getElementById('ball2'),
+    document.getElementById('ball3')
+  ];
+
+  // 小丑中心位置（屏幕坐标）
+  const jokerRect = () => joker.getBoundingClientRect();
+  const cx = () => jokerRect().left + jokerRect().width / 2;
+  const cy = () => jokerRect().top + jokerRect().height / 2;
+
+  // 左右手抛接点（相对于小丑中心）
+  const HAND_OFFSET_X = 70;
+  const HAND_OFFSET_Y = -100;   // 手在头部下方一点
+  const THROW_OFFSET_Y = -10;   // 抛球起点稍高
+  const CATCH_OFFSET_Y = -10;
+
+  // 抛接高度
+  const THROW_HEIGHT = 180;     // 球达到的最大高度（相对抛点）
+  const CYCLE = 1800;           // 完整瀑布循环时间（毫秒）
+  const BALL_DURATION = CYCLE / 3; // 每球在空中时间 600ms
+  const HAND_DURATION = BALL_DURATION; // 手的接抛周期
+
+  // 抛物线运动：t 归一化 0..1
+  function parabola(p, throwX, throwY, catchX, catchY, height) {
+    const x = throwX + (catchX - throwX) * p;
+    const y = throwY + (catchY - throwY) * p - height * 4 * p * (1 - p);
+    return { x, y };
+  }
+
+  let startTime = null;
+
+  // 手部摆动：到抛接点接住，下一次再抛出
+  // 模式：瀑布 - 球 1 右手抛出 -> 左手接住 -> 左手抛出 -> 右手接住 -> 循环
+  function getHandPositions(cyclePos) {
+    // cyclePos 0..1 对应一个完整抛接周期
+    // 0 -> 0.5: 接到球(从抛点低处) -> 抬手到抛点(准备抛)
+    // 0.5 -> 1: 球已经抛出去，手回到自然下垂
+    const half = 0.5;
+    let leftT, rightT;
+    if (cyclePos < half) {
+      // 右手在抛，左臂在接到球后准备抛
+      // 右手：刚开始抛，往下放
+      rightT = cyclePos / half; // 0 -> 1
+      // 左手：刚接到球，准备抛 -> 抬手到抛点
+      leftT = 1 - rightT;
+    } else {
+      // 左手抛出，右手接到球准备抛
+      const t = (cyclePos - half) / half;
+      leftT = t;             // 0 -> 1
+      rightT = 1 - t;        // 1 -> 0
+    }
+    return { leftT, rightT };
+  }
+
+  // 计算手的位置（相对小丑中心）
+  // t = 0: 手在最低（接住球的瞬间） t = 1: 手在最高（准备抛）
+  function handOffset(t, side) {
+    // 抛接点 X：左右
+    const baseX = side === 'left' ? -HAND_OFFSET_X : HAND_OFFSET_X;
+    // 抛接点 Y：从低到高
+    const baseY = HAND_OFFSET_Y - 20 + t * 20; // 20px 抬起幅度
+    // 摆动一下让动作更生动
+    const wobble = Math.sin(t * Math.PI) * 4;
+    return { x: baseX + wobble * (side === 'left' ? -1 : 1), y: baseY };
+  }
+
+  function animate(now) {
+    if (startTime === null) startTime = now;
+    const elapsed = now - startTime;
+    const cyclePos = (elapsed % CYCLE) / CYCLE;
+
+    const centerX = cx();
+    const centerY = cy();
+
+    // 手的角度与位置
+    const { leftT, rightT } = getHandPositions(cyclePos);
+    const lh = handOffset(leftT, 'left');
+    const rh = handOffset(rightT, 'right');
+
+    // 左手位置（屏幕坐标）
+    const leftHandX = centerX + lh.x;
+    const leftHandY = centerY + lh.y;
+    // 右手位置
+    const rightHandX = centerX + rh.x;
+    const rightHandY = centerY + rh.y;
+
+    // 让手以肩膀为支点旋转 (简单设置位置即可，更像独立手臂)
+    // 这里直接定位手臂的位置（不旋转，让小丑看起来更自然）
+    armLeft.style.left = (lh.x - 14) + 'px';   // 28px 宽
+    armLeft.style.top = (lh.y - 60) + 'px';    // 60 是手抬起基础
+    armRight.style.left = (rh.x - 14) + 'px';
+    armRight.style.top = (rh.y - 60) + 'px';
+
+    // 给小丑添加轻微的呼吸效果
+    const breath = Math.sin(elapsed / 800) * 1.2;
+    joker.style.setProperty('--breath', breath);
+    joker.querySelector('.head').style.transform = `translateX(-50%) translateY(${breath}px)`;
+    joker.querySelector('.hair').style.transform = `translateX(-50%) translateY(${breath}px)`;
+
+    // 3 个球的瀑布轨迹
+    // 球 1: 0 -> 1/3: 右手抛出 -> 飞到顶部 -> 左手接到
+    // 球 2: 1/3 -> 2/3: 左手抛出 -> 飞到顶部 -> 右手接到
+    // 球 3: 2/3 -> 1:   右手抛出 -> 飞到顶部 -> 左手接到
+    const ballPhase = cyclePos * 3; // 0..3
+
+    const trajectories = [
+      { phase: 0, from: rh, to: lh, color: 'red' },     // 红
+      { phase: 1, from: lh, to: rh, color: 'green' },   // 绿
+      { phase: 2, from: rh, to: lh, color: 'blue' }     // 蓝
+    ];
+
+    trajectories.forEach((traj, i) => {
+      const localP = ballPhase - traj.phase;
+      let p, x, y, visible;
+      if (localP >= 0 && localP < 1) {
+        // 球在空中
+        p = localP;
+        const pos = parabola(p,
+          centerX + traj.from.x,
+          centerY + traj.from.y,
+          centerX + traj.to.x,
+          centerY + traj.to.y,
+          THROW_HEIGHT);
+        x = pos.x - 18; // 18 是球半径
+        y = pos.y - 18;
+        visible = true;
+      } else {
+        // 球被手接住（不可见） - 把手的位置作为球的隐藏位置
+        const atHand = localP < 0 ? traj.from : traj.to;
+        x = centerX + atHand.x - 18;
+        y = centerY + atHand.y - 18;
+        visible = false;
+      }
+
+      balls[i].style.left = x + 'px';
+      balls[i].style.top = y + 'px';
+      balls[i].style.opacity = visible ? 1 : 0;
+      // 球旋转效果
+      const rot = (elapsed / 10 + i * 120) % 360;
+      balls[i].style.transform = `rotate(${rot}deg)`;
+    });
+
+    requestAnimationFrame(animate);
+  }
+
+  requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>

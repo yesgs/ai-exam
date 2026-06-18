@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小丑抛球动画</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0b0713;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  .scene {
+    position: relative;
+    width: 600px;
+    height: 650px;
+  }
+
+  /* 背景光晕 */
+  .glow {
+    position: absolute;
+    width: 400px;
+    height: 400px;
+    background: radial-gradient(ellipse, rgba(157,78,221,0.12) 0%, transparent 70%);
+    top: 45%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  /* 地面阴影 */
+  .floor-shadow {
+    position: absolute;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    height: 24px;
+    background: radial-gradient(ellipse, rgba(0,0,0,0.5) 0%, transparent 70%);
+    border-radius: 50%;
+    z-index: 0;
+  }
+
+  /* ====== 小丑 ====== */
+  .joker {
+    position: absolute;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 160px;
+    height: 340px;
+    z-index: 2;
+  }
+
+  /* 帽子 */
+  .hat {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 38px solid transparent;
+    border-right: 38px solid transparent;
+    border-bottom: 70px solid #7b2cbf;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+  }
+  .hat::after {
+    content: '';
+    position: absolute;
+    top: 63px;
+    left: -50px;
+    width: 100px;
+    height: 12px;
+    background: #5a189a;
+    border-radius: 6px;
+  }
+  .hat-pom {
+    position: absolute;
+    top: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 16px;
+    height: 16px;
+    background: radial-gradient(circle at 35% 35%, #ffe066, #ffd60a);
+    border-radius: 50%;
+    z-index: 1;
+  }
+
+  /* 头发 */
+  .hair {
+    position: absolute;
+    top: 55px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .hair-clump {
+    position: absolute;
+    background: #38b000;
+    border-radius: 50%;
+  }
+  .hair-clump:nth-child(1) {
+    width: 38px; height: 44px;
+    left: -38px; top: -8px;
+    transform: rotate(-25deg);
+  }
+  .hair-clump:nth-child(2) {
+    width: 42px; height: 48px;
+    left: 0px; top: -18px;
+  }
+  .hair-clump:nth-child(3) {
+    width: 38px; height: 44px;
+    right: -38px; top: -8px;
+    transform: rotate(25deg);
+  }
+  .hair-clump:nth-child(4) {
+    width: 28px; height: 32px;
+    left: -20px; top: -22px;
+    background: #70e000;
+  }
+  .hair-clump:nth-child(5) {
+    width: 30px; height: 34px;
+    right: -20px; top: -22px;
+    background: #70e000;
+  }
+
+  /* 脸 */
+  .face {
+    position: absolute;
+    top: 55px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 82px;
+    height: 92px;
+    background: #fafafa;
+    border-radius: 42px;
+    box-shadow: inset 0 4px 12px rgba(0,0,0,0.06);
+  }
+  .eye {
+    position: absolute;
+    top: 32px;
+    width: 14px;
+    height: 18px;
+    background: #1a1a1a;
+    border-radius: 50%;
+  }
+  .eye.left { left: 18px; }
+  .eye.right { right: 18px; }
+  .eye::after {
+    content: '';
+    position: absolute;
+    width: 5px;
+    height: 5px;
+    background: #fff;
+    border-radius: 50%;
+    top: 4px;
+    left: 4px;
+  }
+  .nose {
+    position: absolute;
+    top: 52px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 18px;
+    height: 16px;
+    background: radial-gradient(circle at 40% 35%, #ff4d6d, #ff006e);
+    border-radius: 50%;
+  }
+  .mouth {
+    position: absolute;
+    top: 70px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 34px;
+    height: 16px;
+    border-bottom: 3px solid #ff006e;
+    border-radius: 0 0 17px 17px;
+  }
+  .cheek {
+    position: absolute;
+    top: 58px;
+    width: 16px;
+    height: 10px;
+    background: rgba(255,0,110,0.12);
+    border-radius: 50%;
+  }
+  .cheek.left { left: 10px; }
+  .cheek.right { right: 10px; }
+
+  /* 身体 */
+  .body {
+    position: absolute;
+    top: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 88px;
+    height: 120px;
+    background: linear-gradient(180deg, #9d4edd, #7b2cbf);
+    border-radius: 30px;
+    box-shadow: inset -8px 0 16px rgba(0,0,0,0.15);
+  }
+  .bowtie {
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .bowtie-wing {
+    position: absolute;
+    width: 0;
+    height: 0;
+    border-top: 12px solid transparent;
+    border-bottom: 12px solid transparent;
+  }
+  .bowtie-wing.left {
+    right: 5px;
+    border-right: 20px solid #ff006e;
+  }
+  .bowtie-wing.right {
+    left: 5px;
+    border-left: 20px solid #ff006e;
+  }
+  .bowtie-knot {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 11px;
+    height: 11px;
+    background: #ff006e;
+    border-radius: 50%;
+  }
+  .button-row {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    top: 35px;
+  }
+  .button-dot {
+    width: 9px;
+    height: 9px;
+    background: radial-gradient(circle at 35% 35%, #ffe066, #ffd60a);
+    border-radius: 50%;
+    margin: 0 auto 17px;
+    box-shadow: 0 2px 3px rgba(0,0,0,0.2);
+  }
+
+  /* 腿 */
+  .leg {
+    position: absolute;
+    top: 260px;
+    width: 26px;
+    height: 90px;
+    background: linear-gradient(180deg, #7b2cbf, #5a189a);
+    border-radius: 13px;
+  }
+  .leg.left { left: 38px; }
+  .leg.right { right: 38px; }
+  .shoe {
+    position: absolute;
+    bottom: -6px;
+    width: 44px;
+    height: 20px;
+    background: #111;
+    border-radius: 20px 20px 6px 6px;
+  }
+  .shoe.left { left: -9px; }
+  .shoe.right { right: -9px; }
+
+  /* 手臂 */
+  .arm {
+    position: absolute;
+    top: 148px;
+    width: 14px;
+    height: 60px;
+    background: linear-gradient(180deg, #9d4edd, #7b2cbf);
+    border-radius: 7px;
+    transform-origin: 7px 7px;
+  }
+  .arm.left {
+    left: 8px;
+    transform: rotate(-30deg);
+  }
+  .arm.right {
+    right: 8px;
+    transform: rotate(30deg);
+  }
+  .hand {
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 24px;
+    background: #fafafa;
+    border-radius: 50%;
+    border: 2px solid #e8e8e8;
+  }
+
+  /* ====== 球 ====== */
+  .ball {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    z-index: 3;
+    box-shadow: 2px 3px 6px rgba(0,0,0,0.35);
+  }
+  .ball::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 8px;
+    background: rgba(255,255,255,0.45);
+    border-radius: 50%;
+    top: 5px;
+    left: 5px;
+  }
+  .ball.red {
+    background: radial-gradient(circle at 35% 30%, #ff6b81, #c0392b);
+  }
+  .ball.green {
+    background: radial-gradient(circle at 35% 30%, #7bed9f, #27ae60);
+  }
+  .ball.blue {
+    background: radial-gradient(circle at 35% 30%, #70a1ff, #1e3799);
+  }
+</style>
+</head>
+<body>
+  <div class="scene">
+    <div class="glow"></div>
+    <div class="floor-shadow"></div>
+
+    <!-- 球 -->
+    <div class="ball red" id="ball0"></div>
+    <div class="ball green" id="ball1"></div>
+    <div class="ball blue" id="ball2"></div>
+
+    <!-- 小丑 -->
+    <div class="joker">
+      <div class="hat"><div class="hat-pom"></div></div>
+      <div class="hair">
+        <div class="hair-clump"></div>
+        <div class="hair-clump"></div>
+        <div class="hair-clump"></div>
+        <div class="hair-clump"></div>
+        <div class="hair-clump"></div>
+      </div>
+      <div class="face">
+        <div class="eye left"></div>
+        <div class="eye right"></div>
+        <div class="nose"></div>
+        <div class="mouth"></div>
+        <div class="cheek left"></div>
+        <div class="cheek right"></div>
+      </div>
+      <div class="body">
+        <div class="bowtie">
+          <div class="bowtie-wing left"></div>
+          <div class="bowtie-wing right"></div>
+          <div class="bowtie-knot"></div>
+        </div>
+        <div class="button-row">
+          <div class="button-dot"></div>
+          <div class="button-dot"></div>
+          <div class="button-dot"></div>
+        </div>
+      </div>
+      <div class="leg left"><div class="shoe left"></div></div>
+      <div class="leg right"><div class="shoe right"></div></div>
+      <div class="arm left"><div class="hand"></div></div>
+      <div class="arm right"><div class="hand"></div></div>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const scene = document.querySelector('.scene');
+      const balls = [
+        document.getElementById('ball0'),
+        document.getElementById('ball1'),
+        document.getElementById('ball2')
+      ];
+      const leftArm = document.querySelector('.arm.left');
+      const rightArm = document.querySelector('.arm.right');
+
+      // 场景中心 / 手部位置（相对于 scene）
+      const sceneW = 600;
+      const sceneH = 650;
+      const centerX = sceneW / 2;
+      const handY = sceneH - 180; // 手部高度
+      const handSpan = 100; // 两手间距一半
+      const leftHandX = centerX - handSpan;
+      const rightHandX = centerX + handSpan;
+      const throwH = 200; // 抛物最高点
+
+      const period = 1200; // 完整周期 ms
+      const phaseOffset = period / 3;
+
+      // 三次贝塞尔插值
+      function bezier(t, p0, p1, p2) {
+        const mt = 1 - t;
+        return mt * mt * p0 + 2 * mt * t * p1 + t * t * p2;
+      }
+
+      // 单球轨迹：从一只手抛到另一只手，形成瀑布
+      // idx: 球编号，决定左右方向
+      function cascadePos(ballIdx, phase) {
+        const flight = 0.7; // 飞行占比
+        let t, fromX, toX;
+
+        if (phase < flight) {
+          t = phase / flight;
+          // 球0: 左→右, 球1: 右→左, 球2: 左→右
+          fromX = (ballIdx % 2 === 0) ? leftHandX : rightHandX;
+          toX   = (ballIdx % 2 === 0) ? rightHandX : leftHandX;
+        } else {
+          t = 1;
+          fromX = (ballIdx % 2 === 0) ? rightHandX : leftHandX;
+          toX = fromX;
+        }
+
+        const x = bezier(t, fromX, (fromX + toX) / 2, toX);
+
+        let y;
+        if (phase < flight) {
+          // 抛物线
+          y = bezier(t, handY, handY - throwH, handY);
+        } else {
+          y = handY;
+        }
+
+        return { x, y };
+      }
+
+      // 手臂摆动
+      function updateArms(elapsed) {
+        const cycle = (elapsed % period) / period;
+        // 左手在 cycle 0 抛，右手在 cycle 0.35 抛
+        const leftPhase = Math.sin(cycle * Math.PI * 2);
+        const rightPhase = Math.sin((cycle + 0.33) * Math.PI * 2);
+
+        const leftDeg = -40 - Math.max(0, leftPhase) * 25;
+        const rightDeg = 40 + Math.max(0, rightPhase) * 25;
+
+        leftArm.style.transform = `rotate(${leftDeg}deg)`;
+        rightArm.style.transform = `rotate(${rightDeg}deg)`;
+      }
+
+      function animate(timestamp) {
+        const elapsed = timestamp % (period * 100);
+
+        balls.forEach((ball, i) => {
+          const phase = ((elapsed + i * phaseOffset) % period) / period;
+          const pos = cascadePos(i, phase);
+          ball.style.transform = `translate(${pos.x - 14}px, ${pos.y - 14}px)`;
+        });
+
+        updateArms(elapsed);
+
+        requestAnimationFrame(animate);
+      }
+
+      requestAnimationFrame(animate);
+    })();
+  </script>
+</body>
+</html>

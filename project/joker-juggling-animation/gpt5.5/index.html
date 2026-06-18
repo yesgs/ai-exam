@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>小丑三球瀑布抛接动画</title>
+  <style>
+    :root {
+      --bg1: #110820;
+      --bg2: #271247;
+      --stage: #170c2b;
+      --spotlight: rgba(255,255,255,.14);
+      --gold: #ffd76a;
+      --purple: #6c35c9;
+      --purple-dark: #3c177f;
+      --green-hair: #28d16d;
+      --face: #faf7f0;
+      --red: #ff3b4f;
+      --green: #33e174;
+      --blue: #32a7ff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 50% 30%, rgba(255,255,255,.11), transparent 24%),
+        radial-gradient(circle at 50% 100%, rgba(255,215,106,.16), transparent 32%),
+        linear-gradient(145deg, var(--bg1), var(--bg2) 70%, #070511);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: white;
+    }
+
+    .scene {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+      isolation: isolate;
+    }
+
+    .curtain {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        repeating-linear-gradient(
+          90deg,
+          rgba(96, 28, 120, .38) 0 42px,
+          rgba(37, 11, 62, .35) 42px 84px
+        );
+      clip-path: polygon(0 0, 17% 0, 10% 100%, 0 100%, 0 0, 83% 0, 100% 0, 100% 100%, 90% 100%);
+      opacity: .72;
+      z-index: -1;
+    }
+
+    .spotlight {
+      position: absolute;
+      left: 50%;
+      top: -18%;
+      width: min(82vw, 980px);
+      height: 120vh;
+      transform: translateX(-50%);
+      background: radial-gradient(ellipse at 50% 10%, var(--spotlight), transparent 65%);
+      clip-path: polygon(42% 0, 58% 0, 88% 100%, 12% 100%);
+      filter: blur(1px);
+      z-index: -1;
+    }
+
+    #canvas {
+      width: min(100vw, 1100px);
+      height: min(100vh, 760px);
+      display: block;
+      filter: drop-shadow(0 24px 40px rgba(0,0,0,.45));
+    }
+
+    .title {
+      position: absolute;
+      left: 24px;
+      top: 20px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-weight: 800;
+      color: rgba(255,255,255,.82);
+      text-shadow: 0 2px 14px rgba(0,0,0,.45);
+      user-select: none;
+    }
+
+    .hint {
+      position: absolute;
+      right: 24px;
+      bottom: 18px;
+      color: rgba(255,255,255,.62);
+      font-size: 13px;
+      user-select: none;
+    }
+
+    .floor {
+      position: absolute;
+      left: 50%;
+      bottom: 5%;
+      width: min(74vw, 760px);
+      height: 90px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: radial-gradient(ellipse, rgba(0,0,0,.54), rgba(0,0,0,.06) 68%, transparent 72%);
+      z-index: -1;
+    }
+
+    @media (max-width: 720px) {
+      .title {
+        font-size: 13px;
+        left: 14px;
+        top: 12px;
+      }
+
+      .hint {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="scene">
+    <div class="curtain"></div>
+    <div class="spotlight"></div>
+    <div class="floor"></div>
+    <div class="title">Joker Cascade Juggling</div>
+    <canvas id="canvas"></canvas>
+    <div class="hint">三球瀑布循环 · 纯 HTML/CSS/JS · Canvas 动画</div>
+  </main>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+
+    let W = 1100;
+    let H = 760;
+    let dpr = 1;
+
+    const balls = [
+      { color: '#ff3b4f', phase: 0.00, shine: '#ffd1d8' },
+      { color: '#33e174', phase: 1 / 3, shine: '#d2ffe2' },
+      { color: '#32a7ff', phase: 2 / 3, shine: '#d6efff' }
+    ];
+
+    function resize() {
+      const rect = canvas.getBoundingClientRect();
+      dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+      W = Math.round(rect.width);
+      H = Math.round(rect.height);
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    window.addEventListener('resize', resize);
+    resize();
+
+    function easeInOut(t) {
+      return t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    }
+
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
+    }
+
+    function drawEllipse(x, y, rx, ry, color, alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawRoundedRect(x, y, w, h, r, fill, stroke = null, lineWidth = 1) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.lineTo(x + w - r, y);
+      ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+      ctx.lineTo(x + w, y + h - r);
+      ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+      ctx.lineTo(x + r, y + h);
+      ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+      ctx.lineTo(x, y + r);
+      ctx.quadraticCurveTo(x, y, x + r, y);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+      if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = lineWidth;
+        ctx.stroke();
+      }
+    }
+
+    function drawCurve(points, color, width, alpha = 1) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length - 1; i++) {
+        const midX = (points[i].x + points[i + 1].x) / 2;
+        const midY = (points[i].y + points[i + 1].y) / 2;
+        ctx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
+      }
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawBall(x, y, r, color, shine, squash = 1, trail = []) {
+      ctx.save();
+
+      for (let i = 0; i < trail.length; i++) {
+        const p = trail[i];
+        ctx.globalAlpha = p.a;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r * p.s, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+
+      ctx.globalAlpha = 1;
+      ctx.translate(x, y);
+      ctx.scale(1 / squash, squash);
+
+      const grad = ctx.createRadialGradient(-r * .38, -r * .48, r * .08, 0, 0, r);
+      grad.addColorStop(0, shine);
+      grad.addColorStop(.32, color);
+      grad.addColorStop(1, '#171021');
+
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(255,255,255,.42)';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(-r * .35, -r * .42, r * .18, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255,255,255,.82)';
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    function getCascadePosition(local, cx, cy, scale) {
+      const left = { x: cx - 150 * scale, y: cy + 82 * scale };
+      const right = { x: cx + 150 * scale, y: cy + 82 * scale };
+      const top = cy - 220 * scale;
+
+      const half = local < .5 ? local * 2 : (local - .5) * 2;
+      const fromLeft = local < .5;
+      const smooth = easeInOut(half);
+
+      const x = fromLeft ? lerp(left.x, right.x, smooth) : lerp(right.x, left.x, smooth);
+      const yBase = fromLeft ? lerp(left.y, right.y, smooth) : lerp(right.y, left.y, smooth);
+      const arc = Math.sin(Math.PI * half);
+      const y = yBase - arc * (left.y - top);
+
+      const vx = (fromLeft ? 1 : -1) * (1.1 - Math.abs(.5 - half));
+      const squash = half < .08 || half > .92 ? 1.12 : .98;
+
+      return { x, y, vx, squash, left, right, top, half, fromLeft };
+    }
+
+    function drawJoker(cx, baseY, scale, t) {
+      const bob = Math.sin(t * 2.1) * 3 * scale;
+      const shoulderY = baseY - 230 * scale + bob;
+      const headY = baseY - 390 * scale + bob;
+      const sway = Math.sin(t * 1.35) * 5 * scale;
+
+      // shadow
+      drawEllipse(cx, baseY + 7 * scale, 150 * scale, 24 * scale, 'rgba(0,0,0,.45)', 1);
+
+      // legs
+      ctx.save();
+      ctx.lineCap = 'round';
+
+      ctx.lineWidth = 30 * scale;
+      ctx.strokeStyle = '#3c177f';
+      ctx.beginPath();
+      ctx.moveTo(cx - 38 * scale, baseY - 112 * scale);
+      ctx.lineTo(cx - 66 * scale, baseY - 18 * scale);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(cx + 38 * scale, baseY - 112 * scale);
+      ctx.lineTo(cx + 66 * scale, baseY - 18 * scale);
+      ctx.stroke();
+
+      ctx.lineWidth = 14 * scale;
+      ctx.strokeStyle = '#ffd76a';
+      ctx.beginPath();
+      ctx.moveTo(cx - 39 * scale, baseY - 105 * scale);
+      ctx.lineTo(cx - 64 * scale, baseY - 24 * scale);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + 39 * scale, baseY - 105 * scale);
+      ctx.lineTo(cx + 64 * scale, baseY - 24 * scale);
+      ctx.stroke();
+
+      drawEllipse(cx - 74 * scale, baseY - 3 * scale, 40 * scale, 13 * scale, '#101019');
+      drawEllipse(cx + 74 * scale, baseY - 3 * scale, 40 * scale, 13 * scale, '#101019');
+
+      // torso
+      const jacketGrad = ctx.createLinearGradient(cx - 95 * scale, shoulderY - 40 * scale, cx + 95 * scale, baseY - 100 * scale);
+      jacketGrad.addColorStop(0, '#8a4df2');
+      jacketGrad.addColorStop(.52, '#6c35c9');
+      jacketGrad.addColorStop(1, '#3c177f');
+      drawRoundedRect(cx - 88 * scale + sway, shoulderY - 34 * scale, 176 * scale, 158 * scale, 30 * scale, jacketGrad, 'rgba(255,255,255,.18)', 3 * scale);
+
+      // shirt and tie
+      ctx.beginPath();
+      ctx.moveTo(cx - 36 * scale + sway, shoulderY - 28 * scale);
+      ctx.lineTo(cx + 36 * scale + sway, shoulderY - 28 * scale);
+      ctx.lineTo(cx + 18 * scale + sway, shoulderY + 92 * scale);
+      ctx.lineTo(cx - 18 * scale + sway, shoulderY + 92 * scale);
+      ctx.closePath();
+      ctx.fillStyle = '#f8f5e9';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(cx + sway, shoulderY - 18 * scale);
+      ctx.lineTo(cx + 20 * scale + sway, shoulderY + 28 * scale);
+      ctx.lineTo(cx + sway, shoulderY + 88 * scale);
+      ctx.lineTo(cx - 20 * scale + sway, shoulderY + 28 * scale);
+      ctx.closePath();
+      ctx.fillStyle = '#ffd76a';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(cx - 38 * scale + sway, shoulderY + 38 * scale, 5 * scale, 0, Math.PI * 2);
+      ctx.arc(cx + 38 * scale + sway, shoulderY + 38 * scale, 5 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffd76a';
+      ctx.fill();
+
+      // arms aim toward juggling catch points
+      const leftHand = {
+        x: cx - 150 * scale + Math.sin(t * Math.PI * 2) * 7 * scale,
+        y: baseY - 148 * scale + Math.cos(t * Math.PI * 2) * 9 * scale
+      };
+      const rightHand = {
+        x: cx + 150 * scale - Math.sin(t * Math.PI * 2) * 7 * scale,
+        y: baseY - 148 * scale - Math.cos(t * Math.PI * 2) * 9 * scale
+      };
+
+      const leftElbow = { x: cx - 112 * scale, y: shoulderY + 20 * scale + Math.sin(t * 5) * 6 * scale };
+      const rightElbow = { x: cx + 112 * scale, y: shoulderY + 20 * scale - Math.sin(t * 5) * 6 * scale };
+
+      ctx.lineWidth = 19 * scale;
+      ctx.strokeStyle = '#6c35c9';
+      drawCurve([{x: cx - 72 * scale, y: shoulderY + 4 * scale}, leftElbow, leftHand], '#6c35c9', 19 * scale);
+      drawCurve([{x: cx + 72 * scale, y: shoulderY + 4 * scale}, rightElbow, rightHand], '#6c35c9', 19 * scale);
+
+      ctx.lineWidth = 7 * scale;
+      drawCurve([{x: cx - 72 * scale, y: shoulderY + 4 * scale}, leftElbow, leftHand], '#ffd76a', 6 * scale, .9);
+      drawCurve([{x: cx + 72 * scale, y: shoulderY + 4 * scale}, rightElbow, rightHand], '#ffd76a', 6 * scale, .9);
+
+      drawEllipse(leftHand.x, leftHand.y, 20 * scale, 17 * scale, '#faf7f0');
+      drawEllipse(rightHand.x, rightHand.y, 20 * scale, 17 * scale, '#faf7f0');
+
+      // neck
+      drawRoundedRect(cx - 20 * scale + sway * .6, headY + 72 * scale, 40 * scale, 45 * scale, 14 * scale, '#faf7f0');
+
+      // hair behind head
+      for (let i = 0; i < 10; i++) {
+        const angle = -Math.PI + (i / 9) * Math.PI;
+        const hx = cx + Math.cos(angle) * 54 * scale + Math.sin(t * 2 + i) * 4 * scale + sway * .5;
+        const hy = headY + Math.sin(angle) * 46 * scale + 14 * scale;
+        drawEllipse(hx, hy, 25 * scale, 31 * scale, '#28d16d');
+      }
+
+      // head
+      ctx.save();
+      ctx.translate(cx + sway * .35, headY + 28 * scale);
+      ctx.rotate(Math.sin(t * 1.2) * .035);
+
+      const faceGrad = ctx.createRadialGradient(-16 * scale, -18 * scale, 6 * scale, 0, 0, 66 * scale);
+      faceGrad.addColorStop(0, '#ffffff');
+      faceGrad.addColorStop(.7, '#faf7f0');
+      faceGrad.addColorStop(1, '#d8d3cc');
+
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 57 * scale, 69 * scale, 0, 0, Math.PI * 2);
+      ctx.fillStyle = faceGrad;
+      ctx.fill();
+      ctx.lineWidth = 4 * scale;
+      ctx.strokeStyle = 'rgba(20,12,38,.5)';
+      ctx.stroke();
+
+      // eyes
+      ctx.beginPath();
+      ctx.ellipse(-22 * scale, -12 * scale, 10 * scale, 15 * scale, -.2, 0, Math.PI * 2);
+      ctx.ellipse(22 * scale, -12 * scale, 10 * scale, 15 * scale, .2, 0, Math.PI * 2);
+      ctx.fillStyle = '#20162e';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(-19 * scale, -17 * scale, 3 * scale, 0, Math.PI * 2);
+      ctx.arc(25 * scale, -17 * scale, 3 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.fill();
+
+      // brows
+      ctx.lineWidth = 4 * scale;
+      ctx.strokeStyle = '#1d122b';
+      ctx.beginPath();
+      ctx.moveTo(-36 * scale, -31 * scale);
+      ctx.quadraticCurveTo(-21 * scale, -40 * scale, -8 * scale, -29 * scale);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(8 * scale, -29 * scale);
+      ctx.quadraticCurveTo(22 * scale, -40 * scale, 36 * scale, -31 * scale);
+      ctx.stroke();
+
+      // nose
+      ctx.beginPath();
+      ctx.arc(0, 9 * scale, 12 * scale, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff3b4f';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(30,0,20,.35)';
+      ctx.lineWidth = 2 * scale;
+      ctx.stroke();
+
+      // smile
+      ctx.beginPath();
+      ctx.moveTo(-33 * scale, 31 * scale);
+      ctx.quadraticCurveTo(0, 56 * scale, 34 * scale, 31 * scale);
+      ctx.strokeStyle = '#e61e3e';
+      ctx.lineWidth = 6 * scale;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(-22 * scale, 34 * scale);
+      ctx.quadraticCurveTo(0, 45 * scale, 23 * scale, 34 * scale);
+      ctx.strokeStyle = 'rgba(255,255,255,.85)';
+      ctx.lineWidth = 2.2 * scale;
+      ctx.stroke();
+
+      ctx.restore();
+
+      // bow / collar
+      ctx.beginPath();
+      ctx.moveTo(cx + sway * .6, shoulderY - 37 * scale);
+      ctx.lineTo(cx - 48 * scale + sway * .6, shoulderY - 58 * scale);
+      ctx.lineTo(cx - 38 * scale + sway * .6, shoulderY - 18 * scale);
+      ctx.closePath();
+      ctx.fillStyle = '#ffd76a';
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(cx + sway * .6, shoulderY - 37 * scale);
+      ctx.lineTo(cx + 48 * scale + sway * .6, shoulderY - 58 * scale);
+      ctx.lineTo(cx + 38 * scale + sway * .6, shoulderY - 18 * scale);
+      ctx.closePath();
+      ctx.fill();
+
+      drawEllipse(cx + sway * .6, shoulderY - 37 * scale, 12 * scale, 11 * scale, '#ff3b4f');
+
+      // shoulders outline
+      ctx.beginPath();
+      ctx.moveTo(cx - 84 * scale + sway, shoulderY + 2 * scale);
+      ctx.quadraticCurveTo(cx, shoulderY + 42 * scale, cx + 84 * scale + sway, shoulderY + 2 * scale);
+      ctx.strokeStyle = 'rgba(255,255,255,.13)';
+      ctx.lineWidth = 3 * scale;
+      ctx.stroke();
+
+      ctx.restore();
+
+      return { leftHand, rightHand };
+    }
+
+    function drawBackground(t) {
+      ctx.clearRect(0, 0, W, H);
+
+      // faint stars / stage lights
+      ctx.save();
+      ctx.globalAlpha = .6;
+      for (let i = 0; i < 34; i++) {
+        const x = (i * 97 + Math.sin(t + i) * 20) % W;
+        const y = 40 + (i * 53) % (H * .45);
+        const r = 1 + (i % 3) * .45;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = i % 4 === 0 ? '#ffd76a' : 'rgba(255,255,255,.5)';
+        ctx.fill();
+      }
+      ctx.restore();
+
+      // circus arch
+      ctx.save();
+      ctx.globalAlpha = .38;
+      ctx.lineWidth = Math.max(2, W * .006);
+      ctx.strokeStyle = '#ffd76a';
+      ctx.beginPath();
+      ctx.ellipse(W / 2, H * .71, W * .31, H * .54, 0, Math.PI, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.setLineDash([10, 16]);
+      ctx.lineWidth = Math.max(1, W * .0025);
+      ctx.beginPath();
+      ctx.ellipse(W / 2, H * .72, W * .25, H * .44, 0, Math.PI, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function animate(ms) {
+      const time = ms / 1000;
+      const scale = Math.min(W / 1100, H / 760);
+      const cx = W / 2;
+      const baseY = H * .86;
+      const cycle = 2.35;
+      const normalized = (time / cycle) % 1;
+
+      drawBackground(time);
+
+      const hands = drawJoker(cx, baseY, scale, time);
+
+      // cascade guide: barely visible path
+      ctx.save();
+      ctx.globalAlpha = .18;
+      ctx.setLineDash([5 * scale, 11 * scale]);
+      ctx.lineWidth = 2 * scale;
+      ctx.strokeStyle = 'rgba(255,255,255,.5)';
+      ctx.beginPath();
+      const pathSamples = [];
+      for (let i = 0; i <= 50; i++) {
+        const p = getCascadePosition(i / 50 * .5, cx, baseY - 230 * scale, scale);
+        pathSamples.push(p);
+      }
+      pathSamples.forEach((p, i) => {
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      });
+      ctx.stroke();
+
+      ctx.beginPath();
+      const pathSamples2 = [];
+      for (let i = 0; i <= 50; i++) {
+        const p = getCascadePosition(.5 + i / 50 * .5, cx, baseY - 230 * scale, scale);
+        pathSamples2.push(p);
+      }
+      pathSamples2.forEach((p, i) => {
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+
+      // draw balls in y order so lower balls appear in front
+      const ballData = balls.map(ball => {
+        const local = (normalized + ball.phase) % 1;
+        const p = getCascadePosition(local, cx, baseY - 230 * scale, scale);
+        const trail = [];
+        for (let j = 1; j <= 7; j++) {
+          const oldLocal = (local - j * .012 + 1) % 1;
+          const old = getCascadePosition(oldLocal, cx, baseY - 230 * scale, scale);
+          trail.push({
+            x: old.x,
+            y: old.y,
+            a: .09 * (1 - j / 8),
+            s: .94 - j * .045
+          });
+        }
+        return { ...ball, ...p, local, trail };
+      }).sort((a, b) => a.y - b.y);
+
+      for (const b of ballData) {
+        const nearHand = b.half < .07 || b.half > .93;
+        drawBall(
+          b.x,
+          b.y,
+          24 * scale,
+          b.color,
+          b.shine,
+          nearHand ? 1.13 : b.squash,
+          b.trail
+        );
+      }
+
+      // small hand highlights after balls so catch moment reads clearly
+      ctx.save();
+      ctx.globalAlpha = .8;
+      drawEllipse(hands.leftHand.x - 4 * scale, hands.leftHand.y - 5 * scale, 5 * scale, 3 * scale, 'rgba(255,255,255,.85)');
+      drawEllipse(hands.rightHand.x - 4 * scale, hands.rightHand.y - 5 * scale, 5 * scale, 3 * scale, 'rgba(255,255,255,.85)');
+      ctx.restore();
+
+      requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+  </script>
+</body>
+</html>

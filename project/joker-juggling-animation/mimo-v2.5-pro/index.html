@@ -1,0 +1,706 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>小丑抛球动画</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: linear-gradient(180deg, #1a0a2e 0%, #16213e 40%, #0f3460 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  canvas {
+    display: block;
+    filter: drop-shadow(0 0 40px rgba(138, 43, 226, 0.15));
+  }
+  .title {
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #f0c040;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 6px;
+    text-shadow: 0 0 20px rgba(240, 192, 64, 0.5), 0 2px 4px rgba(0,0,0,0.5);
+    text-transform: uppercase;
+    animation: titlePulse 2s ease-in-out infinite;
+  }
+  @keyframes titlePulse {
+    0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+    50% { opacity: 0.85; transform: translateX(-50%) scale(1.03); }
+  }
+  .spotlights {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .spotlight {
+    position: absolute;
+    width: 300px;
+    height: 600px;
+    border-radius: 50%;
+    opacity: 0.06;
+    filter: blur(60px);
+  }
+  .spotlight:nth-child(1) { background: #ff6ec7; top: -100px; left: 20%; animation: sway1 6s ease-in-out infinite; }
+  .spotlight:nth-child(2) { background: #7b68ee; top: -100px; right: 20%; animation: sway2 7s ease-in-out infinite; }
+  .spotlight:nth-child(3) { background: #00ffcc; bottom: -100px; left: 40%; animation: sway1 8s ease-in-out infinite reverse; }
+  @keyframes sway1 { 0%,100% { transform: translateX(0); } 50% { transform: translateX(60px); } }
+  @keyframes sway2 { 0%,100% { transform: translateX(0); } 50% { transform: translateX(-60px); } }
+</style>
+</head>
+<body>
+<div class="title">🎪 Juggling Clown 🎪</div>
+<div class="spotlights">
+  <div class="spotlight"></div>
+  <div class="spotlight"></div>
+  <div class="spotlight"></div>
+</div>
+<canvas id="stage"></canvas>
+<script>
+(() => {
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+
+  function resize() {
+    canvas.width = Math.min(window.innerWidth, 900);
+    canvas.height = Math.min(window.innerHeight, 800);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const S = () => canvas.width / 900;  // scale factor (design at 900px)
+  const CX = () => canvas.width / 2;
+  const CY = () => canvas.height / 2;
+
+  /* ─── colour palette ─── */
+  const PAL = {
+    skin:      '#fde8d0',
+    skinShade: '#f0cba8',
+    white:     '#ffffff',
+    purple:    '#6a1b9a',
+    purpleLt:  '#9c27b0',
+    purpleDk:  '#4a148c',
+    green:     '#00c853',
+    greenDk:   '#00a844',
+    red:       '#ff1744',
+    blue:      '#2979ff',
+    blueLt:    '#448aff',
+    nose:      '#ff5252',
+    lip:       '#e91e63',
+    eye:       '#263238',
+    highlight: 'rgba(255,255,255,0.25)',
+  };
+
+  const BALL_COLORS = [
+    { main: PAL.red,  glow: 'rgba(255,23,68,0.45)',  name: 'red' },
+    { main: PAL.green, glow: 'rgba(0,200,83,0.45)',   name: 'green' },
+    { main: PAL.blue,  glow: 'rgba(41,121,255,0.45)',  name: 'blue' },
+  ];
+
+  /* ─── juggling physics (cascade) ─── */
+  // 3-ball cascade: balls fly L→R then R→L in alternating arcs.
+  // Each ball has a phase 0..2π. Throws happen at θ=0 and θ=π.
+  // Hand positions at catch/throw:
+  const JUGGLE_SPEED = 2.4;          // full cycles per second
+  const THROW_HEIGHT = () => 180 * S();
+  const HAND_SEP     = () => 90 * S(); // half-distance between hands
+
+  function ballPos(phase, t) {
+    const s = S(), cx = CX(), cy = CY();
+    const headTop = cy - 170 * s;
+    const handY   = cy + 20 * s;   // rest hand height
+
+    // phase ∈ [0, 2π) — the ball's position in the cycle
+    const theta = (phase + t * JUGGLE_SPEED * Math.PI * 2) % (Math.PI * 2);
+
+    // Ball is "in hand" during a small window around throw/catch points
+    const inHandZone = 0.35; // radians
+
+    if (theta < inHandZone || theta > Math.PI * 2 - inHandZone) {
+      // In LEFT hand, about to throw right
+      const p = theta < inHandZone ? theta / inHandZone : (theta - (Math.PI*2 - inHandZone)) / inHandZone;
+      const hx = cx - HAND_SEP() * (1 - p * 0.15);
+      const hy = handY - Math.sin(p * Math.PI) * 15 * s;
+      return { x: hx, y: hy, inHand: true, hand: 'L' };
+    }
+
+    if (theta > Math.PI - inHandZone && theta < Math.PI + inHandZone) {
+      // In RIGHT hand, about to throw left
+      const p = (theta - (Math.PI - inHandZone)) / inHandZone;
+      const hx = cx + HAND_SEP() * (1 - p * 0.15);
+      const hy = handY - Math.sin(p * Math.PI) * 15 * s;
+      return { x: hx, y: hy, inHand: true, hand: 'R' };
+    }
+
+    // In flight
+    let progress, fromLeft;
+    if (theta < Math.PI - inHandZone) {
+      // L → R arc
+      const start = inHandZone, end = Math.PI - inHandZone;
+      progress = (theta - start) / (end - start);
+      fromLeft = true;
+    } else {
+      // R → L arc
+      const start = Math.PI + inHandZone, end = Math.PI * 2 - inHandZone;
+      progress = (theta - start) / (end - start);
+      fromLeft = false;
+    }
+
+    // Parabolic arc
+    const x0 = fromLeft ? cx - HAND_SEP() : cx + HAND_SEP();
+    const x1 = fromLeft ? cx + HAND_SEP() : cx - HAND_SEP();
+    const x = x0 + (x1 - x0) * progress;
+    const arcHeight = THROW_HEIGHT();
+    const y = handY - arcHeight * 4 * progress * (1 - progress);
+
+    return { x, y, inHand: false, hand: null };
+  }
+
+  /* ─── particles / sparkles ─── */
+  const sparks = [];
+  function spawnSpark(x, y, color) {
+    for (let i = 0; i < 3; i++) {
+      sparks.push({
+        x, y,
+        vx: (Math.random() - 0.5) * 3,
+        vy: (Math.random() - 1) * 3,
+        life: 1,
+        decay: 0.02 + Math.random() * 0.02,
+        color,
+        size: 2 + Math.random() * 3,
+      });
+    }
+  }
+
+  function updateSparks() {
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const sp = sparks[i];
+      sp.x += sp.vx;
+      sp.y += sp.vy;
+      sp.vy += 0.08;
+      sp.life -= sp.decay;
+      if (sp.life <= 0) sparks.splice(i, 1);
+    }
+  }
+
+  function drawSparks() {
+    for (const sp of sparks) {
+      ctx.globalAlpha = sp.life;
+      ctx.fillStyle = sp.color;
+      ctx.beginPath();
+      ctx.arc(sp.x, sp.y, sp.size * sp.life, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /* ─── stage / floor ─── */
+  function drawStage() {
+    const s = S(), cx = CX(), cy = CY();
+
+    // Spotlight cone from above
+    const grad = ctx.createRadialGradient(cx, cy - 200 * s, 0, cx, cy + 100 * s, 350 * s);
+    grad.addColorStop(0, 'rgba(255,255,200,0.08)');
+    grad.addColorStop(0.5, 'rgba(255,255,200,0.03)');
+    grad.addColorStop(1, 'transparent');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Floor
+    const floorY = cy + 230 * s;
+    const fGrad = ctx.createLinearGradient(0, floorY, 0, floorY + 100 * s);
+    fGrad.addColorStop(0, 'rgba(139,69,19,0.3)');
+    fGrad.addColorStop(1, 'transparent');
+    ctx.fillStyle = fGrad;
+    ctx.fillRect(cx - 250 * s, floorY, 500 * s, 100 * s);
+
+    // Floor line
+    ctx.strokeStyle = 'rgba(255,255,200,0.15)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(cx - 200 * s, floorY);
+    ctx.lineTo(cx + 200 * s, floorY);
+    ctx.stroke();
+  }
+
+  /* ─── draw clown ─── */
+  function drawClown(t) {
+    const s = S(), cx = CX(), cy = CY();
+    const breathe = Math.sin(t * 2) * 3 * s;
+    const sway = Math.sin(t * 1.2) * 2 * s;
+
+    ctx.save();
+    ctx.translate(sway, 0);
+
+    // ── Body / Suit ──
+    const bodyTop = cy - 60 * s;
+    const bodyBot = cy + 170 * s;
+
+    // Suit jacket
+    ctx.fillStyle = PAL.purple;
+    ctx.beginPath();
+    ctx.moveTo(cx - 55 * s, bodyTop + 10 * s);
+    // Left shoulder
+    ctx.quadraticCurveTo(cx - 70 * s, bodyTop - 10 * s, cx - 60 * s, bodyTop - 30 * s);
+    // Neck
+    ctx.quadraticCurveTo(cx - 20 * s, bodyTop - 45 * s, cx, bodyTop - 40 * s);
+    ctx.quadraticCurveTo(cx + 20 * s, bodyTop - 45 * s, cx + 60 * s, bodyTop - 30 * s);
+    // Right shoulder
+    ctx.quadraticCurveTo(cx + 70 * s, bodyTop - 10 * s, cx + 55 * s, bodyTop + 10 * s);
+    // Right side
+    ctx.lineTo(cx + 45 * s, bodyBot);
+    // Bottom
+    ctx.lineTo(cx - 45 * s, bodyBot);
+    ctx.closePath();
+    ctx.fill();
+
+    // Suit lapels / details
+    ctx.fillStyle = PAL.purpleLt;
+    ctx.beginPath();
+    ctx.moveTo(cx - 8 * s, bodyTop - 30 * s);
+    ctx.lineTo(cx - 30 * s, bodyTop + 50 * s);
+    ctx.lineTo(cx - 10 * s, bodyTop + 80 * s);
+    ctx.lineTo(cx, bodyTop + 40 * s);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(cx + 8 * s, bodyTop - 30 * s);
+    ctx.lineTo(cx + 30 * s, bodyTop + 50 * s);
+    ctx.lineTo(cx + 10 * s, bodyTop + 80 * s);
+    ctx.lineTo(cx, bodyTop + 40 * s);
+    ctx.closePath();
+    ctx.fill();
+
+    // Buttons
+    for (let i = 0; i < 3; i++) {
+      const by = bodyTop + 50 * s + i * 35 * s;
+      ctx.fillStyle = '#ffd700';
+      ctx.beginPath();
+      ctx.arc(cx, by, 4 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffab00';
+      ctx.beginPath();
+      ctx.arc(cx, by, 2 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Bow tie
+    ctx.fillStyle = PAL.red;
+    ctx.beginPath();
+    ctx.moveTo(cx, bodyTop - 28 * s);
+    ctx.lineTo(cx - 18 * s, bodyTop - 38 * s);
+    ctx.lineTo(cx - 18 * s, bodyTop - 18 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(cx, bodyTop - 28 * s);
+    ctx.lineTo(cx + 18 * s, bodyTop - 38 * s);
+    ctx.lineTo(cx + 18 * s, bodyTop - 18 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#ff5252';
+    ctx.beginPath();
+    ctx.arc(cx, bodyTop - 28 * s, 5 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Legs ──
+    const legY = bodyBot;
+    // Left leg
+    ctx.fillStyle = PAL.purpleDk;
+    ctx.fillRect(cx - 35 * s, legY, 25 * s, 60 * s);
+    // Right leg
+    ctx.fillRect(cx + 10 * s, legY, 25 * s, 60 * s);
+    // Shoes
+    ctx.fillStyle = PAL.red;
+    drawShoe(cx - 35 * s, legY + 55 * s, s, false);
+    drawShoe(cx + 10 * s, legY + 55 * s, s, true);
+
+    // ── Arms ──
+    drawArms(t, s, cx, cy, bodyTop);
+
+    // ── Head ──
+    drawHead(t, s, cx, cy, breathe);
+
+    ctx.restore();
+  }
+
+  function drawShoe(x, y, s, flip) {
+    ctx.save();
+    if (flip) {
+      ctx.translate(x + 25 * s, 0);
+      ctx.scale(-1, 1);
+      ctx.translate(-(x + 25 * s), 0);
+    }
+    ctx.fillStyle = PAL.red;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 25 * s, y);
+    ctx.quadraticCurveTo(x + 45 * s, y, x + 45 * s, y - 8 * s);
+    ctx.quadraticCurveTo(x + 45 * s, y - 15 * s, x + 30 * s, y - 15 * s);
+    ctx.lineTo(x, y - 15 * s);
+    ctx.closePath();
+    ctx.fill();
+    // Sole highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.fillRect(x + 2 * s, y - 2 * s, 38 * s, 3 * s);
+    ctx.restore();
+  }
+
+  function drawArms(t, s, cx, cy, bodyTop) {
+    const armY = bodyTop;
+    const breathe = Math.sin(t * 2) * 3 * s;
+
+    // Arm wave synchronized with juggling
+    const jugglePhase = (t * JUGGLE_SPEED * Math.PI * 2) % (Math.PI * 2);
+
+    // Left arm
+    const lAngle = Math.sin(jugglePhase) * 0.4 - 0.3;
+    ctx.save();
+    ctx.translate(cx - 55 * s, armY);
+    ctx.rotate(lAngle);
+    // Upper arm
+    ctx.fillStyle = PAL.purple;
+    ctx.beginPath();
+    ctx.ellipse(0, 35 * s, 14 * s, 38 * s, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    // Sleeve ruffle
+    ctx.fillStyle = PAL.purpleLt;
+    ctx.beginPath();
+    ctx.ellipse(0, 8 * s, 18 * s, 12 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Forearm
+    ctx.fillStyle = PAL.skin;
+    ctx.beginPath();
+    ctx.ellipse(0, 72 * s, 10 * s, 30 * s, 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    // Glove
+    drawGlove(0, 95 * s, s);
+    ctx.restore();
+
+    // Right arm
+    const rAngle = -Math.sin(jugglePhase) * 0.4 + 0.3;
+    ctx.save();
+    ctx.translate(cx + 55 * s, armY);
+    ctx.rotate(rAngle);
+    ctx.fillStyle = PAL.purple;
+    ctx.beginPath();
+    ctx.ellipse(0, 35 * s, 14 * s, 38 * s, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PAL.purpleLt;
+    ctx.beginPath();
+    ctx.ellipse(0, 8 * s, 18 * s, 12 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PAL.skin;
+    ctx.beginPath();
+    ctx.ellipse(0, 72 * s, 10 * s, 30 * s, -0.1, 0, Math.PI * 2);
+    ctx.fill();
+    drawGlove(0, 95 * s, s);
+    ctx.restore();
+  }
+
+  function drawGlove(x, y, s) {
+    // White glove
+    ctx.fillStyle = PAL.white;
+    ctx.beginPath();
+    ctx.ellipse(x, y, 13 * s, 10 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Fingers hint
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.ellipse(x + i * 7 * s, y - 6 * s, 4 * s, 6 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Wrist cuff
+    ctx.fillStyle = '#e8e8e8';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 7 * s, 14 * s, 5 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawHead(t, s, cx, cy, breathe) {
+    const headY = cy - 130 * s + breathe;
+    const headBob = Math.sin(t * 1.5) * 2 * s;
+
+    ctx.save();
+    ctx.translate(0, headBob);
+
+    // ── Green Hair ──
+    const hairColor = PAL.green;
+    const hairDk = PAL.greenDk;
+
+    // Hair base (big puffy shapes)
+    ctx.fillStyle = hairColor;
+    // Main hair volume
+    ctx.beginPath();
+    ctx.arc(cx, headY - 25 * s, 58 * s, Math.PI, 0);
+    ctx.quadraticCurveTo(cx + 65 * s, headY - 40 * s, cx + 50 * s, headY + 10 * s);
+    ctx.quadraticCurveTo(cx + 30 * s, headY - 10 * s, cx, headY - 15 * s);
+    ctx.quadraticCurveTo(cx - 30 * s, headY - 10 * s, cx - 50 * s, headY + 10 * s);
+    ctx.quadraticCurveTo(cx - 65 * s, headY - 40 * s, cx - 58 * s, headY - 25 * s);
+    ctx.closePath();
+    ctx.fill();
+
+    // Hair curls / spikes
+    const curlPositions = [
+      { x: -45, y: -50, r: 22 },
+      { x: -20, y: -65, r: 20 },
+      { x: 5,  y: -70, r: 22 },
+      { x: 30, y: -60, r: 20 },
+      { x: 48, y: -40, r: 18 },
+      { x: -50, y: -30, r: 16 },
+      { x: 52, y: -20, r: 16 },
+    ];
+    for (const c of curlPositions) {
+      ctx.fillStyle = (c.x + c.y) % 2 === 0 ? hairColor : hairDk;
+      ctx.beginPath();
+      ctx.arc(cx + c.x * s, headY + c.y * s, c.r * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Hair highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath();
+    ctx.ellipse(cx - 10 * s, headY - 55 * s, 25 * s, 15 * s, -0.3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Face (white) ──
+    ctx.fillStyle = PAL.white;
+    ctx.beginPath();
+    ctx.ellipse(cx, headY, 45 * s, 50 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Face outline
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // ── Eyes ──
+    const eyeY = headY - 8 * s;
+    const blink = Math.abs(Math.sin(t * 0.5)) < 0.05 ? 0.15 : 1;
+
+    // Left eye
+    ctx.fillStyle = PAL.white;
+    ctx.beginPath();
+    ctx.ellipse(cx - 16 * s, eyeY, 12 * s, 14 * s * blink, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PAL.eye;
+    ctx.beginPath();
+    ctx.ellipse(cx - 14 * s, eyeY + 2 * s, 6 * s, 7 * s * blink, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx - 12 * s, eyeY - 1 * s, 2.5 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Right eye
+    ctx.fillStyle = PAL.white;
+    ctx.beginPath();
+    ctx.ellipse(cx + 16 * s, eyeY, 12 * s, 14 * s * blink, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = PAL.eye;
+    ctx.beginPath();
+    ctx.ellipse(cx + 18 * s, eyeY + 2 * s, 6 * s, 7 * s * blink, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(cx + 20 * s, eyeY - 1 * s, 2.5 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Eyebrows
+    ctx.strokeStyle = PAL.eye;
+    ctx.lineWidth = 3 * s;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(cx - 26 * s, eyeY - 16 * s);
+    ctx.quadraticCurveTo(cx - 16 * s, eyeY - 24 * s, cx - 6 * s, eyeY - 16 * s);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx + 6 * s, eyeY - 16 * s);
+    ctx.quadraticCurveTo(cx + 16 * s, eyeY - 24 * s, cx + 26 * s, eyeY - 16 * s);
+    ctx.stroke();
+
+    // ── Nose (big red circle) ──
+    ctx.fillStyle = PAL.nose;
+    ctx.beginPath();
+    ctx.arc(cx, headY + 6 * s, 10 * s, 0, Math.PI * 2);
+    ctx.fill();
+    // Nose highlight
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath();
+    ctx.arc(cx - 3 * s, headY + 3 * s, 4 * s, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ── Mouth (big smile) ──
+    ctx.fillStyle = PAL.lip;
+    ctx.beginPath();
+    ctx.moveTo(cx - 22 * s, headY + 20 * s);
+    ctx.quadraticCurveTo(cx, headY + 42 * s, cx + 22 * s, headY + 20 * s);
+    ctx.quadraticCurveTo(cx, headY + 32 * s, cx - 22 * s, headY + 20 * s);
+    ctx.closePath();
+    ctx.fill();
+
+    // Teeth
+    ctx.fillStyle = PAL.white;
+    ctx.beginPath();
+    ctx.moveTo(cx - 16 * s, headY + 22 * s);
+    ctx.quadraticCurveTo(cx, headY + 34 * s, cx + 16 * s, headY + 22 * s);
+    ctx.quadraticCurveTo(cx, headY + 28 * s, cx - 16 * s, headY + 22 * s);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cheek circles
+    ctx.fillStyle = 'rgba(255,100,100,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cx - 30 * s, headY + 12 * s, 10 * s, 7 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 30 * s, headY + 12 * s, 10 * s, 7 * s, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /* ─── draw balls ─── */
+  const prevBallPos = [{}, {}, {}];
+
+  function drawBalls(t) {
+    const s = S();
+    const phases = [0, (Math.PI * 2) / 3, (Math.PI * 4) / 3];
+
+    for (let i = 0; i < 3; i++) {
+      const pos = ballPos(phases[i], t);
+      const col = BALL_COLORS[i];
+      const radius = 14 * s;
+
+      // Spawn sparks when ball is caught
+      if (prevBallPos[i].inHand === false && pos.inHand === true) {
+        spawnSpark(pos.x, pos.y, col.main);
+      }
+      prevBallPos[i] = { ...pos };
+
+      // Trail effect when in flight
+      if (!pos.inHand) {
+        for (let j = 1; j <= 5; j++) {
+          const trailPhase = phases[i] - j * 0.06;
+          const tp = ballPos(trailPhase, t);
+          ctx.globalAlpha = 0.12 - j * 0.02;
+          ctx.fillStyle = col.main;
+          ctx.beginPath();
+          ctx.arc(tp.x, tp.y, radius * (1 - j * 0.12), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+      }
+
+      // Glow
+      const glowGrad = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, radius * 2.5);
+      glowGrad.addColorStop(0, col.glow);
+      glowGrad.addColorStop(1, 'transparent');
+      ctx.fillStyle = glowGrad;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ball body
+      const ballGrad = ctx.createRadialGradient(
+        pos.x - radius * 0.3, pos.y - radius * 0.3, radius * 0.1,
+        pos.x, pos.y, radius
+      );
+      ballGrad.addColorStop(0, '#fff');
+      ballGrad.addColorStop(0.3, col.main);
+      ballGrad.addColorStop(1, col.main.replace('ff', 'aa'));
+      ctx.fillStyle = ballGrad;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Specular highlight
+      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.beginPath();
+      ctx.ellipse(pos.x - radius * 0.25, pos.y - radius * 0.3, radius * 0.35, radius * 0.25, -0.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  /* ─── shadow under clown ─── */
+  function drawShadow(t) {
+    const s = S(), cx = CX(), cy = CY();
+    const floorY = cy + 230 * s;
+    const pulse = 1 + Math.sin(t * 2) * 0.05;
+
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(cx, floorY + 5 * s, 70 * s * pulse, 10 * s * pulse, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /* ─── confetti (background) ─── */
+  const confetti = [];
+  for (let i = 0; i < 40; i++) {
+    confetti.push({
+      x: Math.random() * 900,
+      y: Math.random() * 800,
+      w: 4 + Math.random() * 6,
+      h: 8 + Math.random() * 12,
+      color: ['#ff1744','#ffd600','#00e676','#2979ff','#d500f9','#ff9100'][Math.floor(Math.random()*6)],
+      speed: 0.3 + Math.random() * 0.5,
+      rot: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.03,
+      sway: Math.random() * Math.PI * 2,
+    });
+  }
+
+  function drawConfetti(t) {
+    const s = S();
+    for (const c of confetti) {
+      c.y += c.speed * s;
+      c.rot += c.rotSpeed;
+      c.sway += 0.02;
+      if (c.y > canvas.height + 20) { c.y = -20; c.x = Math.random() * canvas.width / s; }
+
+      ctx.save();
+      ctx.translate(c.x * s + Math.sin(c.sway) * 20 * s, c.y);
+      ctx.rotate(c.rot);
+      ctx.fillStyle = c.color;
+      ctx.globalAlpha = 0.35;
+      ctx.fillRect(-c.w * s / 2, -c.h * s / 2, c.w * s, c.h * s);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+  }
+
+  /* ─── main loop ─── */
+  let startTime = null;
+
+  function frame(ts) {
+    if (!startTime) startTime = ts;
+    const t = (ts - startTime) / 1000;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    drawConfetti(t);
+    drawStage();
+    drawShadow(t);
+    drawClown(t);
+    drawBalls(t);
+    updateSparks();
+    drawSparks();
+
+    requestAnimationFrame(frame);
+  }
+
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
