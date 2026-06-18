@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>果冻俄罗斯方块 · 无限解压</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #faf8f3;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(255, 214, 165, 0.25), transparent 40%),
+      radial-gradient(circle at 85% 80%, rgba(160, 210, 255, 0.25), transparent 40%),
+      #faf8f3;
+  }
+
+  .container {
+    display: flex;
+    align-items: flex-start;
+    gap: 32px;
+    position: relative;
+  }
+
+  .board-wrap {
+    position: relative;
+    padding: 14px;
+    border-radius: 28px;
+    background: linear-gradient(145deg, #ffffff, #f0ede8);
+    box-shadow:
+      0 22px 44px rgba(0, 0, 0, 0.08),
+      0 8px 16px rgba(0, 0, 0, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  .board {
+    position: relative;
+    width: 300px;
+    height: 600px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.6);
+    overflow: hidden;
+    box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.04);
+  }
+
+  .board::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+    background-size: 30px 30px;
+    pointer-events: none;
+  }
+
+  .cell {
+    position: absolute;
+    width: 28px;
+    height: 28px;
+    border-radius: 9px;
+    background: var(--bg);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow:
+      0 4px 0 var(--shadow),
+      0 6px 8px rgba(0, 0, 0, 0.1),
+      inset 0 -6px 0 rgba(0, 0, 0, 0.06),
+      inset 0 3px 0 rgba(255, 255, 255, 0.4);
+    transition: top 0.07s linear, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .cell::after {
+    content: '';
+    position: absolute;
+    top: 4px; left: 5px;
+    width: 8px; height: 6px;
+    background: rgba(255, 255, 255, 0.55);
+    border-radius: 40%;
+    transform: rotate(-20deg);
+  }
+
+  .cell.bounce {
+    animation: jello 0.5s ease;
+  }
+  @keyframes jello {
+    0%, 100% { transform: scale(1, 1); }
+    25% { transform: scale(0.85, 1.15); }
+    50% { transform: scale(1.1, 0.9); }
+    75% { transform: scale(0.95, 1.05); }
+  }
+
+  .cell.clearing {
+    animation: popOut 0.45s ease-out forwards;
+  }
+  @keyframes popOut {
+    0% { transform: scale(1); opacity: 1; }
+    30% { transform: scale(1.45); filter: brightness(1.3); }
+    100% { transform: scale(0) rotate(45deg); opacity: 0; }
+  }
+
+  .line-wave {
+    position: absolute;
+    left: 0; right: 0;
+    height: 30px;
+    pointer-events: none;
+    animation: wave 0.5s ease-out forwards;
+  }
+  @keyframes wave {
+    0% { opacity: 0; background: radial-gradient(circle, var(--wave-color) 0%, transparent 70%); transform: scaleX(0.2); }
+    50% { opacity: 0.4; transform: scaleX(1.1); }
+    100% { opacity: 0; transform: scaleX(1.3); }
+  }
+
+  .bubble {
+    position: absolute;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.9), var(--b-color));
+    pointer-events: none;
+    animation: bubbleFloat 1s ease-out forwards;
+  }
+  @keyframes bubbleFloat {
+    0% { transform: translate(0, 0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--bx), var(--by)) scale(0); opacity: 0; }
+  }
+
+  .confetti {
+    position: absolute;
+    width: 8px; height: 8px;
+    pointer-events: none;
+    animation: confettiFall 1.2s ease-out forwards;
+  }
+  @keyframes confettiFall {
+    0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+    100% { transform: translate(var(--cx), var(--cy)) rotate(720deg); opacity: 0; }
+  }
+
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    padding-top: 20px;
+  }
+  .card {
+    width: 130px;
+    padding: 18px 20px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.05);
+    backdrop-filter: blur(8px);
+  }
+  .card-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    color: rgba(0, 0, 0, 0.35);
+    margin-bottom: 6px;
+  }
+  .card-val {
+    font-size: 30px;
+    font-weight: 700;
+    color: #4a4a4a;
+  }
+  .card-val.small { font-size: 20px; color: #ff8c69; }
+
+  .progress-track {
+    width: 100%;
+    height: 6px;
+    margin-top: 10px;
+    border-radius: 3px;
+    background: rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #ffb6b9, #8fd9c4, #8fcaff);
+    transition: width 0.3s ease;
+  }
+
+  .header {
+    position: absolute;
+    top: -54px;
+    left: 0; right: 0;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 4px;
+    color: rgba(0, 0, 0, 0.25);
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">JELLY TETRIS · INFINITE LOOP</div>
+    <div class="board-wrap">
+      <div class="board" id="board"></div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div class="card-label">LINES</div>
+        <div class="card-val" id="lines">0</div>
+      </div>
+      <div class="card">
+        <div class="card-label">COMBO</div>
+        <div class="card-val small" id="combo">×0</div>
+      </div>
+      <div class="card">
+        <div class="card-label">PACE</div>
+        <div class="progress-track"><div class="progress-fill" id="pace" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const board = document.getElementById('board');
+  const linesEl = document.getElementById('lines');
+  const comboEl = document.getElementById('combo');
+  const paceEl = document.getElementById('pace');
+
+  const COLS = 10, ROWS = 20, CELL = 30;
+
+  const PIECES = {
+    I: { bg: '#8fd9c4', shadow: '#6bc4ac', shape: [[1,1,1,1]] },
+    O: { bg: '#ffe59e', shadow: '#e6c875', shape: [[1,1],[1,1]] },
+    T: { bg: '#e0b0ff', shadow: '#c48ee0', shape: [[0,1,0],[1,1,1]] },
+    S: { bg: '#b5e6a2', shadow: '#8ec97a', shape: [[0,1,1],[1,1,0]] },
+    Z: { bg: '#ffb6b9', shadow: '#e69094', shape: [[1,1,0],[0,1,1]] },
+    J: { bg: '#8fc4ff', shadow: '#6ba4e0', shape: [[1,0,0],[1,1,1]] },
+    L: { bg: '#ffd4a3', shadow: '#e6b87a', shape: [[0,0,1],[1,1,1]] }
+  };
+  const KEYS = Object.keys(PIECES);
+
+  let grid, bottomGap, totalLines, combo, active, dropTimer, dropInterval, last, raf;
+
+  function init() {
+    grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+    bottomGap = 0; totalLines = 0; combo = 0;
+    active = null; dropInterval = 460; dropTimer = 0; last = 0;
+    cleanup(); updateUI();
+    spawn();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function cleanup() {
+    board.querySelectorAll('.cell, .line-wave, .bubble, .confetti').forEach(n => n.remove());
+  }
+
+  function updateUI() {
+    linesEl.textContent = totalLines;
+    comboEl.textContent = combo > 0 ? '×' + combo : '×0';
+    const pct = Math.min(100, ((460 - dropInterval) / (460 - 80)) * 100);
+    paceEl.style.width = pct + '%';
+  }
+
+  function rotate(shape) {
+    const h = shape.length, w = shape[0].length;
+    const r = Array.from({length: w}, () => Array(h).fill(0));
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        r[x][h - 1 - y] = shape[y][x];
+    return r;
+  }
+
+  function allRotations(shape) {
+    const rots = [shape];
+    let cur = shape;
+    for (let i = 0; i < 3; i++) { cur = rotate(cur); rots.push(cur); }
+    return rots;
+  }
+
+  function canPlace(shape, x, y) {
+    for (let r = 0; r < shape.length; r++)
+      for (let c = 0; c < shape[r].length; c++) {
+        if (!shape[r][c]) continue;
+        const nx = x + c, ny = y + r;
+        if (nx < 0 || nx >= COLS || ny >= ROWS) return false;
+        if (ny < 0) continue;
+        if (grid[ny][nx]) return false;
+      }
+    return true;
+  }
+
+  function spawn() {
+    const key = KEYS[Math.floor(Math.random() * KEYS.length)];
+    const def = PIECES[key];
+    const shapes = allRotations(def.shape);
+
+    const candidates = [];
+    for (const s of shapes) {
+      for (let x = -1; x <= COLS - s[0].length + 1; x++) {
+        const ty = bottomGap - s.length + 1;
+        if (ty < -s.length + 1) continue;
+        if (canPlace(s, x, ty)) candidates.push({ shape: s, x, y: ty });
+      }
+    }
+
+    let chosen;
+    if (candidates.length > 0) {
+      chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    } else {
+      chosen = { shape: def.shape, x: Math.floor((COLS - def.shape[0].length) / 2), y: 0 };
+    }
+
+    active = {
+      shape: chosen.shape, x: chosen.x, y: chosen.y,
+      bg: def.bg, shadow: def.shadow
+    };
+  }
+
+  function lock() {
+    for (let r = 0; r < active.shape.length; r++)
+      for (let c = 0; c < active.shape[r].length; c++) {
+        if (!active.shape[r][c]) continue;
+        const nx = active.x + c, ny = active.y + r;
+        if (ny < 0) continue;
+        grid[ny][nx] = { bg: active.bg, shadow: active.shadow };
+      }
+
+    const full = [];
+    for (let y = 0; y < ROWS; y++)
+      if (grid[y].every(c => c)) full.push(y);
+
+    if (full.length > 0) clearRows(full);
+    else combo = 0;
+    active = null;
+  }
+
+  function clearRows(rows) {
+    combo++;
+    totalLines += rows.length;
+    updateUI();
+
+    rows.forEach(row => {
+      // 果冻 Q 弹波纹
+      const wave = document.createElement('div');
+      wave.className = 'line-wave';
+      wave.style.top = (row * CELL) + 'px';
+      const colors = ['#ffb6b9', '#8fd9c4', '#8fc4ff', '#ffe59e'];
+      wave.style.setProperty('--wave-color', colors[row % colors.length]);
+      board.appendChild(wave);
+      setTimeout(() => wave.remove(), 600);
+
+      // 泡泡粒子 + 方块消除
+      for (let c = 0; c < COLS; c++) {
+        const cell = grid[row][c];
+        if (!cell) continue;
+
+        const el = document.createElement('div');
+        el.className = 'cell clearing';
+        el.style.left = (c * CELL + 1) + 'px';
+        el.style.top = (row * CELL + 1) + 'px';
+        el.style.setProperty('--bg', cell.bg);
+        el.style.setProperty('--shadow', cell.shadow);
+        board.appendChild(el);
+        setTimeout(() => el.remove(), 500);
+
+        for (let i = 0; i < 2; i++) {
+          const b = document.createElement('div');
+          b.className = 'bubble';
+          const size = 8 + Math.random() * 10;
+          b.style.width = size + 'px';
+          b.style.height = size + 'px';
+          b.style.left = (c * CELL + 14) + 'px';
+          b.style.top = (row * CELL + 14) + 'px';
+          b.style.setProperty('--b-color', cell.bg);
+          b.style.setProperty('--bx', (Math.random() - 0.5) * 90 + 'px');
+          b.style.setProperty('--by', -(Math.random() * 80 + 20) + 'px');
+          board.appendChild(b);
+          setTimeout(() => b.remove(), 1100);
+        }
+      }
+    });
+
+    setTimeout(() => {
+      const sorted = [...rows].sort((a, b) => b - a);
+      sorted.forEach(r => { grid.splice(r, 1); grid.unshift(Array(COLS).fill(0)); });
+      recomputeGap();
+      dropInterval = Math.max(80, dropInterval - 12);
+      updateUI();
+    }, 420);
+  }
+
+  function recomputeGap() {
+    for (let r = 0; r < ROWS; r++)
+      if (grid[r].some(c => !c)) { bottomGap = r; return; }
+    bottomGap = ROWS;
+  }
+
+  function celebrate() {
+    const palette = ['#ffb6b9', '#8fd9c4', '#8fc4ff', '#ffe59e', '#e0b0ff', '#ffd4a3'];
+    for (let i = 0; i < 70; i++) {
+      setTimeout(() => {
+        const cf = document.createElement('div');
+        cf.className = 'confetti';
+        cf.style.background = palette[Math.floor(Math.random() * palette.length)];
+        cf.style.left = Math.random() * 300 + 'px';
+        cf.style.top = Math.random() * 600 + 'px';
+        cf.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+        const a = Math.random() * Math.PI * 2;
+        const d = 60 + Math.random() * 120;
+        cf.style.setProperty('--cx', Math.cos(a) * d + 'px');
+        cf.style.setProperty('--cy', Math.sin(a) * d + 'px');
+        board.appendChild(cf);
+        setTimeout(() => cf.remove(), 1300);
+      }, i * 16);
+    }
+  }
+
+  function loop(ts) {
+    if (!last) last = ts;
+    const dt = ts - last; last = ts;
+
+    if (!active) {
+      if (bottomGap >= ROWS) {
+        celebrate();
+        setTimeout(() => {
+          grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+          bottomGap = 0; combo = 0; dropInterval = 460;
+          updateUI(); spawn();
+        }, 1000);
+      } else {
+        spawn();
+      }
+    } else {
+      dropTimer += dt;
+      if (dropTimer >= dropInterval) {
+        dropTimer = 0;
+        if (canPlace(active.shape, active.x, active.y + 1)) {
+          active.y++;
+        } else {
+          lock();
+        }
+      }
+    }
+
+    render();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function render() {
+    board.querySelectorAll('.cell:not(.clearing)').forEach(n => n.remove());
+    if (!active) return;
+    for (let r = 0; r < active.shape.length; r++)
+      for (let c = 0; c < active.shape[r].length; c++) {
+        if (!active.shape[r][c]) continue;
+        const x = active.x + c, y = active.y + r;
+        if (y < 0) continue;
+        const el = document.createElement('div');
+        el.className = 'cell';
+        el.style.left = (x * CELL + 1) + 'px';
+        el.style.top = (y * CELL + 1) + 'px';
+        el.style.setProperty('--bg', active.bg);
+        el.style.setProperty('--shadow', active.shadow);
+        board.appendChild(el);
+      }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

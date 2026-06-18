@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>俄罗斯方块 · 超解压循环</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #06060f;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+    font-family: 'Orbitron', monospace, sans-serif;
+  }
+
+  .stars {
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(1px 1px at 10% 20%, rgba(255,255,255,0.5), transparent),
+      radial-gradient(1px 1px at 30% 65%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(1.5px 1.5px at 55% 8%, rgba(200,200,255,0.4), transparent),
+      radial-gradient(1px 1px at 72% 82%, rgba(255,255,255,0.25), transparent),
+      radial-gradient(1px 1px at 88% 35%, rgba(255,255,255,0.4), transparent),
+      radial-gradient(1.5px 1.5px at 18% 88%, rgba(200,220,255,0.3), transparent),
+      radial-gradient(1px 1px at 42% 50%, rgba(255,255,255,0.2), transparent),
+      radial-gradient(1px 1px at 62% 28%, rgba(180,200,255,0.35), transparent),
+      radial-gradient(1px 1px at 8% 48%, rgba(255,255,255,0.3), transparent),
+      radial-gradient(1px 1px at 95% 70%, rgba(200,200,255,0.25), transparent);
+    animation: starDrift 120s linear infinite;
+  }
+  @keyframes starDrift {
+    to { transform: translateY(-30px); }
+  }
+
+  .container { display: flex; gap: 24px; align-items: flex-start; }
+
+  .side-panel {
+    display: flex; flex-direction: column; gap: 16px; min-width: 130px;
+  }
+
+  .panel-box {
+    background: rgba(255,255,255,0.025);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 14px 16px;
+    backdrop-filter: blur(10px);
+  }
+
+  .panel-label {
+    color: rgba(255,255,255,0.35);
+    font-size: 9px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    text-align: center;
+  }
+
+  .score-value {
+    color: #fff;
+    font-size: 26px;
+    font-weight: 900;
+    text-align: center;
+    text-shadow: 0 0 20px rgba(100,200,255,0.5);
+  }
+
+  .stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .level-v  { color: #64ffda; text-shadow: 0 0 12px rgba(100,255,218,0.4); }
+  .lines-v  { color: #ff6b9d; text-shadow: 0 0 12px rgba(255,107,157,0.4); }
+  .combo-v  { color: #ffd93d; text-shadow: 0 0 12px rgba(255,217,61,0.4); min-height: 24px; font-size: 16px; }
+  .speed-v  { color: #a78bfa; text-shadow: 0 0 12px rgba(167,139,250,0.4); }
+
+  .next-piece { display: flex; justify-content: center; align-items: center; min-height: 76px; }
+
+  .game-frame {
+    position: relative;
+    padding: 3px;
+    border-radius: 8px;
+    background: linear-gradient(135deg,
+      rgba(100,200,255,0.25),
+      rgba(200,100,255,0.25),
+      rgba(255,100,200,0.25));
+  }
+  .game-frame::before {
+    content: '';
+    position: absolute; inset: -3px;
+    border-radius: 11px;
+    background: linear-gradient(135deg,
+      rgba(100,200,255,0.1), rgba(200,100,255,0.1));
+    filter: blur(12px);
+    z-index: -1;
+  }
+
+  #gameCanvas { display: block; border-radius: 5px; background: #0a0e14; }
+
+  .combo-popup {
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 56px;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 40px rgba(255,200,50,0.9), 0 0 80px rgba(255,100,50,0.5);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 100;
+    letter-spacing: 4px;
+  }
+  .combo-popup.show { animation: comboFlash 1.4s ease-out forwards; }
+
+  @keyframes comboFlash {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.2); }
+    12%  { opacity: 1; transform: translate(-50%, -50%) scale(1.25); }
+    25%  { transform: translate(-50%, -50%) scale(0.95); }
+    35%  { transform: translate(-50%, -50%) scale(1.0); }
+    75%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -65%) scale(1.05); }
+  }
+
+  .title {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+    color: rgba(255,255,255,0.5);
+    font-size: 12px; letter-spacing: 8px; text-transform: uppercase;
+  }
+  .title span {
+    background: linear-gradient(90deg, #64ffda, #818cf8, #f472b6);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+</style>
+</head>
+<body>
+<div class="stars"></div>
+<div class="title"><span>TETRIS · RELAX</span></div>
+
+<div class="container">
+  <div class="side-panel">
+    <div class="panel-box">
+      <div class="panel-label">Score</div>
+      <div class="score-value" id="score">0</div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-label">Level</div>
+      <div class="stat-value level-v" id="level">1</div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-label">Lines</div>
+      <div class="stat-value lines-v" id="lines">0</div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-label">Combo</div>
+      <div class="stat-value combo-v" id="combo"></div>
+    </div>
+  </div>
+
+  <div class="game-frame">
+    <canvas id="gameCanvas"></canvas>
+  </div>
+
+  <div class="side-panel">
+    <div class="panel-box">
+      <div class="panel-label">Next</div>
+      <div class="next-piece">
+        <canvas id="nextCanvas" width="96" height="76"></canvas>
+      </div>
+    </div>
+    <div class="panel-box">
+      <div class="panel-label">Speed</div>
+      <div class="stat-value speed-v" id="speed">1×</div>
+    </div>
+  </div>
+</div>
+
+<div class="combo-popup" id="comboPopup"></div>
+
+<script>
+(() => {
+  /* ════════════════════════════════════════
+     SETUP
+     ════════════════════════════════════════ */
+  const COLS = 10, ROWS = 20, BLOCK = 28;
+  const W = COLS * BLOCK, H = ROWS * BLOCK;
+
+  const cvs = document.getElementById('gameCanvas');
+  const ctx = cvs.getContext('2d');
+  cvs.width = W; cvs.height = H;
+
+  const ncvs = document.getElementById('nextCanvas');
+  const nctx = ncvs.getContext('2d');
+
+  /* ── Pieces ── */
+  const P = {
+    I: { b:[[0,0],[1,0],[2,0],[3,0]], c:'#00e5ff', g:'rgba(0,229,255,0.3)' },
+    O: { b:[[0,0],[1,0],[0,1],[1,1]], c:'#ffd600', g:'rgba(255,214,0,0.3)' },
+    T: { b:[[0,0],[1,0],[2,0],[1,1]], c:'#d500f9', g:'rgba(213,0,249,0.3)' },
+    S: { b:[[1,0],[2,0],[0,1],[1,1]], c:'#76ff03', g:'rgba(118,255,3,0.3)' },
+    Z: { b:[[0,0],[1,0],[1,1],[2,1]], c:'#ff1744', g:'rgba(255,23,68,0.3)' },
+    J: { b:[[0,0],[0,1],[1,1],[2,1]], c:'#2979ff', g:'rgba(41,121,255,0.3)' },
+    L: { b:[[2,0],[0,1],[1,1],[2,1]], c:'#ff9100', g:'rgba(255,145,0,0.3)' },
+  };
+
+  /* ── Rotation ── */
+  function rot90(b) {
+    // rotate 90° CW around center of bounding box
+    const xs = b.map(p=>p[0]), ys = b.map(p=>p[1]);
+    const mx = Math.min(...xs), Mx = Math.max(...xs);
+    const my = Math.min(...ys), My = Math.max(...ys);
+    const cx = (mx + Mx) / 2, cy = (my + My) / 2;
+    const r = b.map(([x,y]) => [Math.round(cx + (y - cy)), Math.round(cy - (x - cx))]);
+    // normalize
+    const nx = Math.min(...r.map(p=>p[0])), ny = Math.min(...r.map(p=>p[1]));
+    return r.map(([x,y]) => [x - nx, y - ny]);
+  }
+
+  function getBlocks(type, rot) {
+    let b = P[type].b.map(p => [...p]);
+    for (let i = 0; i < ((rot % 4) + 4) % 4; i++) b = rot90(b);
+    return b;
+  }
+
+  /* ════════════════════════════════════════
+     SCENES — pre-scripted piece placements
+     Each scene: list of pieces that fill 4 rows,
+     then all 4 rows clear at once.
+     ════════════════════════════════════════ */
+
+  // Helper: convert placement to absolute grid coords
+  function place(type, rot, col, row) {
+    const b = getBlocks(type, rot);
+    return {
+      type, color: P[type].c, glow: P[type].g,
+      blocks: b.map(([x,y]) => [x + col, y + row])
+    };
+  }
+
+  const SCENES = [
+    // ── Scene 1: Classic bottom-4 fill ──
+    {
+      clearRows: [16,17,18,19],
+      pieces: [
+        place('L',0, 0,18), place('J',0, 3,18), place('T',0, 6,18), place('O',0, 8,18),
+        place('S',0, 0,17), place('Z',0, 2,17), place('T',2, 4,16), place('O',0, 6,17),
+        place('I',1, 9,16),
+        place('L',2, 0,16), place('J',2, 2,16), place('S',0, 4,16), place('Z',0, 6,16),
+      ]
+    },
+    // ── Scene 2: Full-row I + combos ──
+    {
+      clearRows: [16,17,18,19],
+      pieces: [
+        place('I',0, 0,19), place('T',0, 4,19), place('L',0, 7,19),
+        place('J',0, 0,18), place('O',0, 3,18), place('S',0, 5,18), place('Z',0, 7,18),
+        place('I',0, 0,17), place('T',2, 4,16), place('L',2, 7,16),
+        place('J',2, 0,16), place('O',0, 3,16), place('S',0, 5,16), place('Z',0, 7,16),
+      ]
+    },
+    // ── Scene 3: Tetris I-slot ──
+    {
+      clearRows: [16,17,18,19],
+      pieces: [
+        place('L',0, 0,18), place('S',0, 3,18), place('Z',0, 5,18), place('T',0, 7,18),
+        place('J',0, 0,17), place('O',0, 2,17), place('L',2, 4,16), place('T',2, 6,16), place('S',0, 8,17),
+        place('J',2, 0,16), place('O',0, 2,16), place('Z',0, 4,16), place('S',0, 6,16), place('Z',0, 8,16),
+      ]
+    },
+    // ── Scene 4: O-block columns ──
+    {
+      clearRows: [16,17,18,19],
+      pieces: [
+        place('O',0, 0,18), place('O',0, 2,18), place('O',0, 4,18), place('T',0, 6,18), place('I',1, 9,16),
+        place('S',0, 0,17), place('Z',0, 2,17), place('L',0, 4,17), place('J',0, 7,17),
+        place('T',2, 0,16), place('S',0, 3,16), place('Z',0, 5,16), place('L',2, 7,16),
+      ]
+    },
+    // ── Scene 5: Zigzag staircase ──
+    {
+      clearRows: [16,17,18,19],
+      pieces: [
+        place('I',0, 0,19), place('I',0, 4,19), place('S',0, 8,18),
+        place('Z',0, 0,18), place('T',0, 2,18), place('L',0, 5,18), place('I',1, 9,16),
+        place('J',0, 0,17), place('O',0, 2,17), place('S',0, 4,17), place('Z',0, 6,17), place('T',2, 8,17),
+        place('L',2, 0,16), place('J',2, 3,16), place('T',0, 6,16), place('O',0, 8,16),
+      ]
+    },
+    // ── Scene 6: Checker start ──
+    {
+      clearRows: [16,17,18,19],
+      pieces: [
+        place('T',1, 0,18), place('T',3, 3,18), place('T',1, 6,18), place('L',0, 9,18),
+        place('S',0, 0,17), place('Z',0, 2,17), place('O',0, 4,17), place('S',0, 6,17), place('J',0, 8,16),
+        place('J',2, 0,16), place('L',2, 2,16), place('Z',0, 4,16), place('T',0, 6,16), place('Z',0, 8,16),
+        place('I',0, 0,19),
+      ]
+    },
+    // ── Scene 7: Diamond pattern ──
+    {
+      clearRows: [16,17,18,19],
+      pieces: [
+        place('O',0, 0,18), place('I',0, 2,19), place('O',0, 6,18), place('T',0, 8,18),
+        place('Z',0, 0,17), place('S',0, 2,17), place('L',0, 4,17), place('J',0, 7,17),
+        place('I',0, 0,16), place('T',2, 4,16), place('O',0, 6,16), place('S',0, 8,16),
+      ]
+    },
+    // ── Scene 8: Pure blocks ──
+    {
+      clearRows: [16,17,18,19],
+      pieces: [
+        place('L',1, 0,18), place('J',1, 3,18), place('L',1, 6,18), place('I',1, 9,16),
+        place('T',0, 0,17), place('O',0, 3,17), place('T',0, 5,17), place('S',0, 7,17),
+        place('Z',0, 0,16), place('O',0, 2,16), place('S',0, 4,16), place('J',2, 6,16), place('Z',0, 8,16),
+      ]
+    },
+  ];
+
+  /* ════════════════════════════════════════
+     ANIMATION STATE MACHINE
+     ════════════════════════════════════════ */
+
+  let grid = [];          // ROWS × COLS, null or {color, glow}
+  let state = 'idle';     // idle | falling | landing | flash | clearing | pause
+  let sceneIdx = 0, pieceIdx = 0;
+  let score = 0, totalLines = 0, combo = 0, level = 1;
+
+  // Falling
+  let curPiece = null;    // {blocks, color, glow, type}
+  let fallOffset = 0;     // pixel offset above final position (animates to 0)
+  let fallSpeed = 6;
+
+  // Flash / clear
+  let clearRowsList = [];
+  let animTimer = 0;
+  const FLASH_DUR = 40, CLEAR_DUR = 60, LAND_DUR = 12;
+
+  // Particles
+  const parts = [];
+
+  function resetGrid() {
+    grid = Array.from({length:ROWS}, () => Array(COLS).fill(null));
+  }
+
+  /* ── Score helpers ── */
+  const SCORE_TABLE = [0, 100, 300, 500, 800];
+  function addScore(pts) {
+    score += pts;
+    document.getElementById('score').textContent = score.toLocaleString();
+  }
+  function updateUI() {
+    document.getElementById('lines').textContent = totalLines;
+    level = Math.floor(totalLines / 8) + 1;
+    document.getElementById('level').textContent = level;
+    document.getElementById('speed').textContent = Math.min(level, 12) + '×';
+  }
+  function showCombo() {
+    if (combo <= 1) {
+      document.getElementById('combo').textContent = '';
+      return;
+    }
+    document.getElementById('combo').textContent = combo + '×';
+    const labels = ['','','DOUBLE!','TRIPLE!','TETRIS!','PENTA!'];
+    const el = document.getElementById('comboPopup');
+    el.textContent = combo < labels.length ? labels[combo] : combo + '× COMBO!';
+    el.className = 'combo-popup show';
+    clearTimeout(el._tid);
+    el._tid = setTimeout(() => el.className = 'combo-popup', 1400);
+  }
+
+  /* ── Particle helpers ── */
+  function spawnLandParticles(piece) {
+    const bottomY = Math.max(...piece.blocks.map(b => b[1])) * BLOCK + BLOCK;
+    const centerX = piece.blocks.reduce((s,b) => s + b[0], 0) / piece.blocks.length * BLOCK + BLOCK/2;
+    for (let i = 0; i < 10; i++) {
+      parts.push({
+        x: centerX + (Math.random()-0.5)*40, y: bottomY,
+        vx: (Math.random()-0.5)*3, vy: -Math.random()*3 - 0.5,
+        life: 1, decay: 0.025 + Math.random()*0.02,
+        color: piece.color, sz: 2 + Math.random()*3
+      });
+    }
+  }
+  function spawnClearParticles(row) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = grid[row][c];
+      if (!cell) continue;
+      for (let i = 0; i < 5; i++) {
+        parts.push({
+          x: c * BLOCK + BLOCK/2 + (Math.random()-0.5)*BLOCK,
+          y: row * BLOCK + BLOCK/2,
+          vx: (Math.random()-0.5)*8, vy: (Math.random()-0.5)*6 - 2,
+          life: 1, decay: 0.012 + Math.random()*0.012,
+          color: cell.color, sz: 3 + Math.random()*5
+        });
+      }
+    }
+  }
+  function updateParticles() {
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      p.x += p.vx; p.y += p.vy; p.vy += 0.12; p.life -= p.decay;
+      if (p.life <= 0) parts.splice(i, 1);
+    }
+  }
+
+  /* ════════════════════════════════════════
+     STATE MACHINE
+     ════════════════════════════════════════ */
+
+  function startScene() {
+    resetGrid();
+    state = 'idle';
+    pieceIdx = 0;
+    combo = 0;
+    nextPiece();
+  }
+
+  function nextPiece() {
+    const scene = SCENES[sceneIdx % SCENES.length];
+    if (pieceIdx >= scene.pieces.length) {
+      // Scene done → flash all clear rows
+      clearRowsList = [...scene.clearRows];
+      state = 'flash';
+      animTimer = 0;
+      return;
+    }
+    const piece = scene.pieces[pieceIdx];
+    curPiece = {
+      blocks: piece.blocks,
+      color: piece.color,
+      glow: piece.glow,
+      type: piece.type,
+    };
+    // Fall from 10 rows above the highest block of this piece
+    const topRow = Math.min(...piece.blocks.map(b => b[1]));
+    fallOffset = (topRow + 10) * BLOCK;
+    fallSpeed = 7 + Math.random() * 3;
+    state = 'falling';
+  }
+
+  function lockPiece() {
+    for (const [x,y] of curPiece.blocks) {
+      if (y >= 0 && y < ROWS && x >= 0 && x < COLS) {
+        grid[y][x] = { color: curPiece.color, glow: curPiece.glow };
+      }
+    }
+    spawnLandParticles(curPiece);
+    addScore(10);
+    state = 'landing';
+    animTimer = 0;
+  }
+
+  /* ════════════════════════════════════════
+     DRAWING
+     ════════════════════════════════════════ */
+
+  function drawBlock(cx, cy, color, glow, alpha) {
+    if (cy < -BLOCK || cy > H + BLOCK) return;
+    ctx.globalAlpha = alpha ?? 1;
+
+    // Glow
+    ctx.shadowColor = glow || 'transparent';
+    ctx.shadowBlur = 10;
+
+    ctx.fillStyle = color;
+    ctx.fillRect(cx+1, cy+1, BLOCK-2, BLOCK-2);
+    ctx.shadowBlur = 0;
+
+    // Bevels
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(cx+2, cy+2, BLOCK-4, 3);
+    ctx.fillStyle = 'rgba(255,255,255,0.10)';
+    ctx.fillRect(cx+2, cy+2, 3, BLOCK-4);
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.fillRect(cx+2, cy+BLOCK-4, BLOCK-4, 3);
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    ctx.fillRect(cx+BLOCK-4, cy+2, 3, BLOCK-4);
+
+    ctx.globalAlpha = 1;
+  }
+
+  function drawGrid() {
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.025)';
+    ctx.lineWidth = 0.5;
+    for (let c = 0; c <= COLS; c++) {
+      ctx.beginPath(); ctx.moveTo(c*BLOCK,0); ctx.lineTo(c*BLOCK,H); ctx.stroke();
+    }
+    for (let r = 0; r <= ROWS; r++) {
+      ctx.beginPath(); ctx.moveTo(0,r*BLOCK); ctx.lineTo(W,r*BLOCK); ctx.stroke();
+    }
+
+    // Placed blocks
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cell = grid[r][c];
+        if (!cell) continue;
+        let a = 1;
+        if (state === 'flash' && clearRowsList.includes(r)) {
+          a = 0.3 + 0.7 * Math.abs(Math.sin(animTimer / FLASH_DUR * Math.PI * 5));
+        }
+        if (state === 'clearing' && clearRowsList.includes(r)) {
+          a = 1 - animTimer / CLEAR_DUR;
+        }
+        drawBlock(c * BLOCK, r * BLOCK, cell.color, cell.glow, a);
+      }
+    }
+  }
+
+  function drawFalling() {
+    if (!curPiece || (state !== 'falling' && state !== 'landing')) return;
+
+    // Ghost (final position, translucent)
+    ctx.globalAlpha = 0.1;
+    for (const [x,y] of curPiece.blocks) {
+      ctx.fillStyle = curPiece.color;
+      ctx.fillRect(x*BLOCK+1, y*BLOCK+1, BLOCK-2, BLOCK-2);
+    }
+    ctx.globalAlpha = 1;
+
+    // Actual piece (offset by fallOffset)
+    for (const [x,y] of curPiece.blocks) {
+      const py = y * BLOCK - fallOffset;
+      drawBlock(x * BLOCK, py, curPiece.color, curPiece.glow, 1);
+    }
+  }
+
+  function drawParticles() {
+    for (const p of parts) {
+      ctx.globalAlpha = p.life;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.sz * p.life, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Horizontal clear flash beam
+  function drawClearBeam() {
+    if (state !== 'clearing') return;
+    const t = animTimer / CLEAR_DUR;
+    for (const r of clearRowsList) {
+      const py = r * BLOCK + BLOCK/2;
+      const beamW = W * t;
+      const g = ctx.createLinearGradient(W/2 - beamW/2, 0, W/2 + beamW/2, 0);
+      g.addColorStop(0, 'transparent');
+      g.addColorStop(0.3, `rgba(255,255,255,${0.3 * (1-t)})`);
+      g.addColorStop(0.5, `rgba(255,255,255,${0.6 * (1-t)})`);
+      g.addColorStop(0.7, `rgba(255,255,255,${0.3 * (1-t)})`);
+      g.addColorStop(1, 'transparent');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, py - BLOCK, W, BLOCK * 2);
+    }
+  }
+
+  /* Next piece preview */
+  function drawNext() {
+    nctx.clearRect(0, 0, 96, 76);
+    const scene = SCENES[sceneIdx % SCENES.length];
+    if (pieceIdx >= scene.pieces.length) return;
+    const piece = scene.pieces[pieceIdx];
+    const xs = piece.blocks.map(b=>b[0]), ys = piece.blocks.map(b=>b[1]);
+    const mnX = Math.min(...xs), mxX = Math.max(...xs);
+    const mnY = Math.min(...ys), mxY = Math.max(...ys);
+    const pw = (mxX-mnX+1)*18, ph = (mxY-mnY+1)*18;
+    const ox = (96-pw)/2 - mnX*18, oy = (76-ph)/2 - mnY*18;
+
+    for (const [x,y] of piece.blocks) {
+      const px = ox + x*18, py = oy + y*18;
+      nctx.fillStyle = piece.color;
+      nctx.fillRect(px+1, py+1, 16, 16);
+      nctx.fillStyle = 'rgba(255,255,255,0.2)';
+      nctx.fillRect(px+2, py+2, 14, 3);
+      nctx.fillStyle = 'rgba(0,0,0,0.15)';
+      nctx.fillRect(px+2, py+14, 14, 2);
+    }
+  }
+
+  /* ════════════════════════════════════════
+     MAIN LOOP
+     ════════════════════════════════════════ */
+
+  function tick() {
+    animTimer++;
+
+    switch (state) {
+      case 'falling':
+        fallOffset = Math.max(0, fallOffset - fallSpeed);
+        if (fallOffset <= 0) lockPiece();
+        break;
+
+      case 'landing':
+        if (animTimer >= LAND_DUR) {
+          pieceIdx++;
+          nextPiece();
+        }
+        break;
+
+      case 'flash':
+        if (animTimer >= FLASH_DUR) {
+          // Transition to clearing & spawn particles
+          state = 'clearing';
+          animTimer = 0;
+          combo++;
+          totalLines += clearRowsList.length;
+          for (const r of clearRowsList) spawnClearParticles(r);
+
+          const lineScore = SCORE_TABLE[Math.min(clearRowsList.length, 4)] || 800;
+          addScore(lineScore + (combo > 1 ? combo * 50 : 0));
+          updateUI();
+          showCombo();
+        }
+        break;
+
+      case 'clearing':
+        if (animTimer >= CLEAR_DUR) {
+          // Remove rows
+          const sorted = [...clearRowsList].sort((a,b) => a - b);
+          for (const r of sorted) { grid.splice(r, 1); grid.unshift(Array(COLS).fill(null)); }
+          clearRowsList = [];
+          animTimer = 0;
+          state = 'pause';
+          setTimeout(() => {
+            const scene = SCENES[sceneIdx % SCENES.length];
+            if (pieceIdx >= scene.pieces.length) {
+              sceneIdx++;
+              startScene();
+            } else {
+              nextPiece();
+            }
+          }, 350);
+        }
+        break;
+    }
+
+    updateParticles();
+  }
+
+  function render() {
+    ctx.clearRect(0, 0, W, H);
+
+    // BG gradient
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#0d1117');
+    bg.addColorStop(1, '#080c12');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    drawGrid();
+    drawFalling();
+    drawClearBeam();
+    drawParticles();
+    drawNext();
+  }
+
+  function loop() {
+    tick();
+    render();
+    requestAnimationFrame(loop);
+  }
+
+  /* ── GO ── */
+  startScene();
+  loop();
+})();
+</script>
+</body>
+</html>

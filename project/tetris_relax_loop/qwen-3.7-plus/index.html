@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>霓虹俄罗斯方块 · 无限解压</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%; overflow: hidden;
+    font-family: 'Courier New', monospace;
+    background: #050510;
+  }
+  body {
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(255, 0, 120, 0.06), transparent 50%),
+      radial-gradient(ellipse at 70% 80%, rgba(0, 200, 255, 0.06), transparent 50%),
+      #050510;
+  }
+
+  .wrap {
+    display: flex; align-items: flex-start; gap: 30px;
+    position: relative;
+  }
+
+  .board-frame {
+    position: relative;
+    padding: 6px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #ff006644, #00ffff44, #ff006644);
+    box-shadow: 0 0 40px rgba(255, 0, 102, 0.2), 0 0 80px rgba(0, 255, 255, 0.1);
+  }
+
+  .board {
+    position: relative;
+    width: 300px; height: 600px;
+    background: rgba(5, 5, 20, 0.95);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  /* 扫描线 */
+  .board::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px, rgba(0, 255, 255, 0.015) 2px, rgba(0, 255, 255, 0.015) 4px
+    );
+    pointer-events: none; z-index: 10;
+  }
+
+  /* 网格 */
+  .grid-bg {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(0, 255, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0, 255, 255, 0.04) 1px, transparent 1px);
+    background-size: 30px 30px;
+    pointer-events: none;
+  }
+
+  /* 方块 */
+  .cell {
+    position: absolute;
+    width: 28px; height: 28px;
+    border-radius: 3px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    box-shadow:
+      0 0 8px var(--glow),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3),
+      inset 0 -2px 0 rgba(0, 0, 0, 0.3);
+    transition: top 0.05s linear;
+  }
+  .cell::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 5px; height: 5px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    filter: blur(0.5px);
+  }
+
+  .cell.clearing {
+    animation: neonClear 0.45s ease-out forwards;
+  }
+  @keyframes neonClear {
+    0%   { transform: scale(1); filter: brightness(1); }
+    20%  { transform: scale(1.5); filter: brightness(3); }
+    100% { transform: scale(0) rotate(180deg); opacity: 0; filter: brightness(5); }
+  }
+
+  /* 行消除闪光 */
+  .line-flash {
+    position: absolute;
+    left: 0; right: 0;
+    height: 30px;
+    background: linear-gradient(90deg, transparent, var(--flash-color, #fff), transparent);
+    pointer-events: none;
+    animation: lineFlash 0.35s ease-out forwards;
+  }
+  @keyframes lineFlash {
+    0%   { opacity: 0; transform: scaleX(0); }
+    50%  { opacity: 1; transform: scaleX(1.2); }
+    100% { opacity: 0; transform: scaleX(1); }
+  }
+
+  /* 电火花 */
+  .spark {
+    position: absolute;
+    width: 3px; height: 3px;
+    border-radius: 50%;
+    pointer-events: none;
+    background: var(--spark-color, #fff);
+    box-shadow: 0 0 6px var(--spark-color, #fff);
+    animation: sparkFly 0.6s ease-out forwards;
+  }
+  @keyframes sparkFly {
+    0%   { transform: translate(0, 0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--sx), var(--sy)) scale(0); opacity: 0; }
+  }
+
+  /* 屏幕震动 */
+  .board.shake { animation: shake 0.3s ease-out; }
+  @keyframes shake {
+    0%, 100% { transform: translate(0, 0); }
+    20%  { transform: translate(-3px, 2px); }
+    40%  { transform: translate(3px, -2px); }
+    60%  { transform: translate(-2px, 1px); }
+    80%  { transform: translate(2px, -1px); }
+  }
+
+  /* 侧边信息 */
+  .side {
+    display: flex; flex-direction: column; gap: 16px;
+    min-width: 130px;
+  }
+  .info-box {
+    padding: 14px 16px;
+    border: 1px solid rgba(0, 255, 255, 0.15);
+    border-radius: 8px;
+    background: rgba(0, 20, 40, 0.6);
+    backdrop-filter: blur(8px);
+  }
+  .info-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(0, 255, 255, 0.4);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .info-val {
+    font-size: 28px;
+    font-weight: 100;
+    color: #0ff;
+    text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+  }
+  .info-val.pink { color: #ff0066; text-shadow: 0 0 10px rgba(255, 0, 102, 0.5); }
+
+  .next-preview {
+    display: grid;
+    gap: 2px;
+    margin-top: 6px;
+  }
+  .next-cell {
+    width: 14px; height: 14px;
+    border-radius: 2px;
+  }
+
+  .progress-bar {
+    height: 3px;
+    background: rgba(0, 255, 255, 0.1);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #ff0066, #0ff);
+    transition: width 0.3s;
+  }
+
+  .title {
+    position: absolute;
+    top: -40px; left: 0; right: 0;
+    text-align: center;
+    font-size: 14px;
+    letter-spacing: 6px;
+    color: rgba(0, 255, 255, 0.3);
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="board-frame">
+      <div class="board" id="board">
+        <div class="grid-bg"></div>
+      </div>
+    </div>
+    <div class="side">
+      <div class="info-box">
+        <div class="info-label">LINES</div>
+        <div class="info-val" id="lines">0</div>
+      </div>
+      <div class="info-box">
+        <div class="info-label">COMBO</div>
+        <div class="info-val pink" id="combo">0</div>
+      </div>
+      <div class="info-box">
+        <div class="info-label">SPEED</div>
+        <div class="progress-bar"><div class="progress-fill" id="speedBar" style="width:0%"></div></div>
+      </div>
+      <div class="info-box">
+        <div class="info-label">NEXT</div>
+        <div id="nextBox" style="margin-top:4px;"></div>
+      </div>
+    </div>
+    <div class="title">NEON TETRIS · INFINITE LOOP</div>
+  </div>
+
+<script>
+(() => {
+  const board = document.getElementById('board');
+  const linesEl = document.getElementById('lines');
+  const comboEl = document.getElementById('combo');
+  const speedBar = document.getElementById('speedBar');
+  const nextBox = document.getElementById('nextBox');
+
+  const COLS = 10, ROWS = 20, CELL = 30;
+
+  // 霓虹配色
+  const PIECES = {
+    I: { bg: 'linear-gradient(135deg, #00e5ff, #0091ea)', border: '#00e5ff', glow: 'rgba(0, 229, 255, 0.6)',
+         shape: [[1,1,1,1]] },
+    O: { bg: 'linear-gradient(135deg, #ffea00, #ff9100)', border: '#ffea00', glow: 'rgba(255, 234, 0, 0.6)',
+         shape: [[1,1],[1,1]] },
+    T: { bg: 'linear-gradient(135deg, #d500f9, #aa00ff)', border: '#d500f9', glow: 'rgba(213, 0, 249, 0.6)',
+         shape: [[0,1,0],[1,1,1]] },
+    S: { bg: 'linear-gradient(135deg, #00e676, #00c853)', border: '#00e676', glow: 'rgba(0, 230, 118, 0.6)',
+         shape: [[0,1,1],[1,1,0]] },
+    Z: { bg: 'linear-gradient(135deg, #ff1744, #d50000)', border: '#ff1744', glow: 'rgba(255, 23, 68, 0.6)',
+         shape: [[1,1,0],[0,1,1]] },
+    J: { bg: 'linear-gradient(135deg, #2979ff, #0d47a1)', border: '#2979ff', glow: 'rgba(41, 121, 255, 0.6)',
+         shape: [[1,0,0],[1,1,1]] },
+    L: { bg: 'linear-gradient(135deg, #ff9100, #e65100)', border: '#ff9100', glow: 'rgba(255, 145, 0, 0.6)',
+         shape: [[0,0,1],[1,1,1]] }
+  };
+  const KEYS = Object.keys(PIECES);
+
+  let grid, bottomGap, totalLines, combo, active, nextPiece;
+  let dropTimer, dropInterval, last, raf;
+
+  function init() {
+    grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+    bottomGap = 0; totalLines = 0; combo = 0;
+    active = null; nextPiece = null;
+    dropInterval = 420; dropTimer = 0; last = 0;
+    cleanup(); updateUI();
+    nextPiece = pickPiece();
+    spawn();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function cleanup() {
+    board.querySelectorAll('.cell, .line-flash, .spark').forEach(n => n.remove());
+  }
+
+  function updateUI() {
+    linesEl.textContent = totalLines;
+    comboEl.textContent = combo > 0 ? '×' + combo : '0';
+    const pct = Math.min(100, ((420 - dropInterval) / (420 - 60)) * 100);
+    speedBar.style.width = pct + '%';
+  }
+
+  function rotate(shape) {
+    const h = shape.length, w = shape[0].length;
+    const r = Array.from({length: w}, () => Array(h).fill(0));
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        r[x][h - 1 - y] = shape[y][x];
+    return r;
+  }
+
+  function allRotations(shape) {
+    const rots = [shape];
+    let cur = shape;
+    for (let i = 0; i < 3; i++) { cur = rotate(cur); rots.push(cur); }
+    return rots;
+  }
+
+  function canPlace(shape, x, y) {
+    for (let r = 0; r < shape.length; r++)
+      for (let c = 0; c < shape[r].length; c++) {
+        if (!shape[r][c]) continue;
+        const nx = x + c, ny = y + r;
+        if (nx < 0 || nx >= COLS || ny >= ROWS) return false;
+        if (ny < 0) continue;
+        if (grid[ny][nx]) return false;
+      }
+    return true;
+  }
+
+  function pickPiece() {
+    const key = KEYS[Math.floor(Math.random() * KEYS.length)];
+    return { key, ...PIECES[key] };
+  }
+
+  function spawn() {
+    // 用 nextPiece
+    const def = nextPiece || pickPiece();
+    nextPiece = pickPiece();
+    renderNextPreview();
+
+    const candidates = [];
+    const shapes = allRotations(def.shape);
+    for (const s of shapes) {
+      for (let x = -1; x <= COLS - s[0].length + 1; x++) {
+        const ty = bottomGap - s.length + 1;
+        if (ty < -s.length + 1) continue;
+        if (canPlace(s, x, ty)) candidates.push({ shape: s, x, y: ty });
+      }
+    }
+
+    let chosen;
+    if (candidates.length > 0) {
+      chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    } else {
+      chosen = { shape: def.shape, x: Math.floor((COLS - def.shape[0].length) / 2), y: 0 };
+    }
+
+    active = {
+      shape: chosen.shape, x: chosen.x, y: chosen.y,
+      bg: def.bg, border: def.border, glow: def.glow
+    };
+  }
+
+  function renderNextPreview() {
+    nextBox.innerHTML = '';
+    if (!nextPiece) return;
+    const s = nextPiece.shape;
+    const container = document.createElement('div');
+    container.className = 'next-preview';
+    container.style.gridTemplateColumns = `repeat(${s[0].length}, 14px)`;
+    for (let r = 0; r < s.length; r++)
+      for (let c = 0; c < s[r].length; c++) {
+        const d = document.createElement('div');
+        d.className = 'next-cell';
+        d.style.background = s[r][c] ? nextPiece.bg : 'transparent';
+        if (s[r][c]) d.style.boxShadow = `0 0 4px ${nextPiece.glow}`;
+        container.appendChild(d);
+      }
+    nextBox.appendChild(container);
+  }
+
+  function lock() {
+    for (let r = 0; r < active.shape.length; r++)
+      for (let c = 0; c < active.shape[r].length; c++) {
+        if (!active.shape[r][c]) continue;
+        const nx = active.x + c, ny = active.y + r;
+        if (ny < 0) continue;
+        grid[ny][nx] = { bg: active.bg, border: active.border, glow: active.glow };
+      }
+
+    const full = [];
+    for (let y = 0; y < ROWS; y++)
+      if (grid[y].every(c => c)) full.push(y);
+
+    if (full.length > 0) clearRows(full);
+    active = null;
+  }
+
+  function clearRows(rows) {
+    combo++;
+    totalLines += rows.length;
+    updateUI();
+
+    // 震动
+    board.classList.remove('shake');
+    void board.offsetWidth;
+    board.classList.add('shake');
+
+    rows.forEach((row, ri) => {
+      // 行闪光
+      const f = document.createElement('div');
+      f.className = 'line-flash';
+      f.style.top = (row * CELL) + 'px';
+      f.style.setProperty('--flash-color', ri % 2 === 0 ? '#0ff' : '#ff0066');
+      board.appendChild(f);
+      setTimeout(() => f.remove(), 400);
+
+      // 消除动画 + 电火花
+      for (let c = 0; c < COLS; c++) {
+        const cell = grid[row][c];
+        if (!cell) continue;
+        const el = document.createElement('div');
+        el.className = 'cell clearing';
+        el.style.left = (c * CELL + 1) + 'px';
+        el.style.top = (row * CELL + 1) + 'px';
+        el.style.setProperty('--bg', cell.bg);
+        el.style.setProperty('--border', cell.border);
+        el.style.setProperty('--glow', cell.glow);
+        board.appendChild(el);
+        setTimeout(() => el.remove(), 500);
+
+        // 电火花
+        for (let p = 0; p < 3; p++) {
+          const sp = document.createElement('div');
+          sp.className = 'spark';
+          sp.style.left = (c * CELL + 14) + 'px';
+          sp.style.top = (row * CELL + 14) + 'px';
+          const angle = Math.random() * Math.PI * 2;
+          const dist = 30 + Math.random() * 80;
+          sp.style.setProperty('--sx', Math.cos(angle) * dist + 'px');
+          sp.style.setProperty('--sy', Math.sin(angle) * dist + 'px');
+          sp.style.setProperty('--spark-color', Math.random() > 0.5 ? '#0ff' : '#ff0066');
+          board.appendChild(sp);
+          setTimeout(() => sp.remove(), 700);
+        }
+      }
+    });
+
+    setTimeout(() => {
+      const sorted = [...rows].sort((a, b) => b - a);
+      sorted.forEach(r => { grid.splice(r, 1); grid.unshift(Array(COLS).fill(0)); });
+      recomputeGap();
+      dropInterval = Math.max(60, dropInterval - 10);
+      updateUI();
+    }, 400);
+  }
+
+  function recomputeGap() {
+    for (let r = 0; r < ROWS; r++)
+      if (grid[r].some(c => !c)) { bottomGap = r; return; }
+    bottomGap = ROWS;
+  }
+
+  function loop(ts) {
+    if (!last) last = ts;
+    const dt = ts - last; last = ts;
+
+    if (!active) {
+      if (bottomGap >= ROWS) {
+        // 全清庆祝
+        celebrate();
+        setTimeout(() => {
+          grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+          bottomGap = 0; combo = 0; dropInterval = 420;
+          updateUI(); nextPiece = pickPiece(); spawn();
+        }, 1000);
+      } else {
+        spawn();
+      }
+    } else {
+      dropTimer += dt;
+      if (dropTimer >= dropInterval) {
+        dropTimer = 0;
+        if (canPlace(active.shape, active.x, active.y + 1)) {
+          active.y++;
+        } else {
+          lock();
+        }
+      }
+    }
+
+    render();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function celebrate() {
+    for (let i = 0; i < 80; i++) {
+      setTimeout(() => {
+        const sp = document.createElement('div');
+        sp.className = 'spark';
+        sp.style.left = Math.random() * 300 + 'px';
+        sp.style.top = Math.random() * 600 + 'px';
+        const a = Math.random() * Math.PI * 2;
+        const d = 50 + Math.random() * 120;
+        sp.style.setProperty('--sx', Math.cos(a) * d + 'px');
+        sp.style.setProperty('--sy', Math.sin(a) * d + 'px');
+        const colors = ['#0ff', '#ff0066', '#ffea00', '#00e676', '#d500f9'];
+        sp.style.setProperty('--spark-color', colors[Math.floor(Math.random() * colors.length)]);
+        sp.style.width = '4px'; sp.style.height = '4px';
+        board.appendChild(sp);
+        setTimeout(() => sp.remove(), 700);
+      }, i * 15);
+    }
+  }
+
+  function render() {
+    board.querySelectorAll('.cell:not(.clearing)').forEach(n => n.remove());
+    if (!active) return;
+    for (let r = 0; r < active.shape.length; r++)
+      for (let c = 0; c < active.shape[r].length; c++) {
+        if (!active.shape[r][c]) continue;
+        const x = active.x + c, y = active.y + r;
+        if (y < 0) continue;
+        const el = document.createElement('div');
+        el.className = 'cell';
+        el.style.left = (x * CELL + 1) + 'px';
+        el.style.top = (y * CELL + 1) + 'px';
+        el.style.setProperty('--bg', active.bg);
+        el.style.setProperty('--border', active.border);
+        el.style.setProperty('--glow', active.glow);
+        board.appendChild(el);
+      }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

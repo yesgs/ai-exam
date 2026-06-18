@@ -1,0 +1,622 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>俄罗斯方块 · 循环消除</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(circle at 20% 20%, #1a1f3a 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, #2a1a3a 0%, transparent 50%),
+      linear-gradient(135deg, #0a0e1f 0%, #131830 100%);
+    color: #fff;
+  }
+
+  .stage {
+    position: relative;
+    display: flex;
+    gap: 40px;
+    align-items: center;
+    padding: 30px;
+  }
+
+  /* 侧栏统计 */
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-width: 180px;
+  }
+
+  .stat-card {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    padding: 16px 18px;
+    backdrop-filter: blur(10px);
+  }
+
+  .stat-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+    margin-bottom: 6px;
+  }
+
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, #fff 0%, #a8b3d9 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .stat-value.flash {
+    animation: flashUp 0.4s ease;
+  }
+
+  @keyframes flashUp {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); color: #ffd86b; -webkit-text-fill-color: #ffd86b; }
+    100% { transform: scale(1); }
+  }
+
+  /* 游戏面板 */
+  .board-wrap {
+    position: relative;
+    padding: 14px;
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow:
+      0 0 60px rgba(80, 120, 255, 0.15),
+      inset 0 0 40px rgba(0, 0, 0, 0.4);
+  }
+
+  canvas {
+    display: block;
+    border-radius: 8px;
+    background: linear-gradient(180deg, #060912 0%, #0c1124 100%);
+  }
+
+  .board-wrap::before {
+    content: "";
+    position: absolute;
+    inset: -2px;
+    border-radius: 19px;
+    padding: 2px;
+    background: linear-gradient(135deg, rgba(120, 180, 255, 0.4), rgba(180, 120, 255, 0.2), transparent);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .title {
+    position: absolute;
+    top: -38px;
+    left: 14px;
+    font-size: 13px;
+    letter-spacing: 4px;
+    color: rgba(255, 255, 255, 0.55);
+    text-transform: uppercase;
+  }
+
+  .title b {
+    color: #fff;
+    font-weight: 600;
+  }
+
+  /* 下一个方块预览 */
+  .next-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    align-items: center;
+  }
+
+  .next-label {
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.5);
+  }
+
+  canvas.next {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .hint {
+    position: absolute;
+    bottom: -28px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 11px;
+    letter-spacing: 1px;
+    color: rgba(255, 255, 255, 0.3);
+    white-space: nowrap;
+  }
+
+  /* 消除时的光晕 */
+  .glow {
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    pointer-events: none;
+    box-shadow: 0 0 0 0 rgba(255, 230, 120, 0);
+    transition: box-shadow 0.05s;
+  }
+
+  .glow.boom {
+    animation: boomGlow 0.5s ease-out;
+  }
+
+  @keyframes boomGlow {
+    0% { box-shadow: inset 0 0 60px rgba(255, 230, 120, 0.9), 0 0 80px rgba(255, 200, 80, 0.6); }
+    100% { box-shadow: inset 0 0 0 rgba(255, 230, 120, 0), 0 0 0 rgba(255, 200, 80, 0); }
+  }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <div class="sidebar">
+    <div class="stat-card">
+      <div class="stat-label">Lines</div>
+      <div class="stat-value" id="linesValue">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Score</div>
+      <div class="stat-value" id="scoreValue">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Combo</div>
+      <div class="stat-value" id="comboValue">x0</div>
+    </div>
+  </div>
+
+  <div class="board-wrap">
+    <div class="title">TETRIS · <b>LOOP</b></div>
+    <canvas id="board" width="300" height="600"></canvas>
+    <div class="glow" id="glow"></div>
+    <div class="hint">自动循环 · 完美消除</div>
+  </div>
+
+  <div class="sidebar next-wrap">
+    <div class="stat-card" style="width:100%">
+      <div class="next-label" style="margin-bottom:10px">Next</div>
+      <canvas class="next" id="next" width="120" height="120"></canvas>
+    </div>
+    <div class="stat-card" style="width:100%">
+      <div class="stat-label">Level</div>
+      <div class="stat-value" id="levelValue">1</div>
+    </div>
+    <div class="stat-card" style="width:100%">
+      <div class="stat-label">Speed</div>
+      <div class="stat-value" id="speedValue">1.0x</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ====== 基础配置 ======
+  const COLS = 10;
+  const ROWS = 20;
+  const CELL = 30; // 与 canvas 300x600 对应
+
+  const boardCanvas = document.getElementById('board');
+  const bctx = boardCanvas.getContext('2d');
+  const nextCanvas = document.getElementById('next');
+  const nctx = nextCanvas.getContext('2d');
+
+  const linesEl = document.getElementById('linesValue');
+  const scoreEl = document.getElementById('scoreValue');
+  const comboEl = document.getElementById('comboValue');
+  const levelEl = document.getElementById('levelValue');
+  const speedEl = document.getElementById('speedValue');
+  const glowEl = document.getElementById('glow');
+
+  // 方块定义（现代柔和配色 + 内发光）
+  const PIECES = {
+    I: { color: '#5ec8ff', cells: [[1,1,1,1]] },
+    O: { color: '#ffd86b', cells: [[1,1],[1,1]] },
+    T: { color: '#c08bff', cells: [[0,1,0],[1,1,1]] },
+    S: { color: '#7ee8a0', cells: [[0,1,1],[1,1,0]] },
+    Z: { color: '#ff7e9d', cells: [[1,1,0],[0,1,1]] },
+    L: { color: '#ffa05e', cells: [[0,0,1],[1,1,1]] },
+    J: { color: '#6b8bff', cells: [[1,0,0],[1,1,1]] }
+  };
+  const KEYS = Object.keys(PIECES);
+
+  // ====== 状态 ======
+  let grid = createGrid();
+  let current = null;
+  let nextPiece = null;
+  let particles = [];
+  let flashRows = [];      // 正在闪烁消除的行
+  let flashTimer = 0;
+  let dropTimer = 0;
+  let dropInterval = 480;  // ms
+  let lastTime = 0;
+  let stats = { lines: 0, score: 0, combo: 0, level: 1 };
+  let clearing = false;    // 正在播放消除动画期间暂停下落
+
+  function createGrid() {
+    const g = [];
+    for (let r = 0; r < ROWS; r++) g.push(new Array(COLS).fill(null));
+    return g;
+  }
+
+  function randomPiece() {
+    const key = KEYS[Math.floor(Math.random() * KEYS.length)];
+    const def = PIECES[key];
+    const cells = def.cells.map(row => row.slice());
+    return {
+      key,
+      color: def.color,
+      cells,
+      x: Math.floor((COLS - cells[0].length) / 2),
+      y: -cells.length
+    };
+  }
+
+  // ====== 碰撞 / 锁定 ======
+  function collide(piece, dx, dy, cells) {
+    cells = cells || piece.cells;
+    for (let r = 0; r < cells.length; r++) {
+      for (let c = 0; c < cells[r].length; c++) {
+        if (!cells[r][c]) continue;
+        const nx = piece.x + c + dx;
+        const ny = piece.y + r + dy;
+        if (nx < 0 || nx >= COLS || ny >= ROWS) return true;
+        if (ny >= 0 && grid[ny][nx]) return true;
+      }
+    }
+    return false;
+  }
+
+  function lockPiece() {
+    const { cells, x, y, color } = current;
+    for (let r = 0; r < cells.length; r++) {
+      for (let c = 0; c < cells[r].length; c++) {
+        if (cells[r][c]) {
+          const gy = y + r;
+          const gx = x + c;
+          if (gy >= 0 && gy < ROWS && gx >= 0 && gx < COLS) {
+            grid[gy][gx] = color;
+          }
+        }
+      }
+    }
+    checkLines();
+  }
+
+  function checkLines() {
+    const full = [];
+    for (let r = ROWS - 1; r >= 0; r--) {
+      if (grid[r].every(cell => cell !== null)) full.push(r);
+    }
+    if (full.length === 0) {
+      stats.combo = 0;
+      spawnNext();
+      return;
+    }
+    // 进入消除动画
+    clearing = true;
+    flashRows = full;
+    flashTimer = 0;
+    // 粒子
+    for (const r of full) {
+      for (let c = 0; c < COLS; c++) {
+        emitParticles(c * CELL + CELL / 2, r * CELL + CELL / 2, grid[r][c]);
+      }
+    }
+    // 触发外发光
+    glowEl.classList.remove('boom');
+    void glowEl.offsetWidth;
+    glowEl.classList.add('boom');
+
+    // 统计
+    stats.lines += full.length;
+    stats.combo += 1;
+    const lineScore = [0, 100, 300, 500, 800][full.length] || 800;
+    stats.score += lineScore * stats.combo;
+    stats.level = 1 + Math.floor(stats.lines / 8);
+    dropInterval = Math.max(120, 480 - (stats.level - 1) * 35);
+    updateStats(true);
+  }
+
+  function applyClear() {
+    // 移除已消除的行
+    flashRows.sort((a, b) => a - b);
+    for (const r of flashRows) {
+      grid.splice(r, 1);
+      grid.unshift(new Array(COLS).fill(null));
+    }
+    flashRows = [];
+    clearing = false;
+    spawnNext();
+  }
+
+  function spawnNext() {
+    current = nextPiece || randomPiece();
+    nextPiece = randomPiece();
+    // 如果新生成的方块一出生就碰撞，说明堆得太满 → 软重置（保持循环）
+    if (collide(current, 0, 0)) {
+      resetBoard();
+    }
+  }
+
+  function resetBoard() {
+    // 优雅地清空：所有格子产生淡出粒子，然后重置
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c]) emitParticles(c * CELL + CELL/2, r * CELL + CELL/2, grid[r][c]);
+      }
+    }
+    grid = createGrid();
+    stats.combo = 0;
+    stats.level = 1;
+    dropInterval = 480;
+    updateStats(false);
+  }
+
+  // ====== 粒子 ======
+  function emitParticles(x, y, color) {
+    const n = 6 + Math.floor(Math.random() * 4);
+    for (let i = 0; i < n; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const spd = 1 + Math.random() * 3.5;
+      particles.push({
+        x, y,
+        vx: Math.cos(ang) * spd,
+        vy: Math.sin(ang) * spd - 1,
+        life: 1,
+        decay: 0.015 + Math.random() * 0.02,
+        size: 2 + Math.random() * 3,
+        color
+      });
+    }
+  }
+
+  function updateParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vy += 0.12;     // 重力
+      p.vx *= 0.99;
+      p.life -= p.decay;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function drawParticles() {
+    for (const p of particles) {
+      bctx.globalAlpha = Math.max(0, p.life);
+      bctx.fillStyle = p.color;
+      bctx.beginPath();
+      bctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+      bctx.fill();
+    }
+    bctx.globalAlpha = 1;
+  }
+
+  // ====== 智能放置：让循环始终能完美消除 ======
+  // 思路：当前方块下落到底后，如果造成顶部填满（无法继续），自动在落定前
+  //      判断是否“危险”。我们采用更柔和的策略：每次锁死后若堆叠超过 12 行
+  //      高度，则触发整体清屏动画重启。这样画面始终流畅。
+  function stackHeight() {
+    for (let r = 0; r < ROWS; r++) {
+      if (grid[r].some(c => c !== null)) return ROWS - r;
+    }
+    return 0;
+  }
+
+  // ====== 绘制 ======
+  function drawCell(ctx, x, y, color, size = CELL, alpha = 1) {
+    const px = x, py = y;
+    ctx.globalAlpha = alpha;
+    // 主体
+    const grad = ctx.createLinearGradient(px, py, px, py + size);
+    grad.addColorStop(0, lighten(color, 0.25));
+    grad.addColorStop(1, color);
+    ctx.fillStyle = grad;
+    roundRect(ctx, px + 1, py + 1, size - 2, size - 2, 4);
+    ctx.fill();
+    // 高光
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    roundRect(ctx, px + 3, py + 3, size - 6, (size - 6) * 0.35, 3);
+    ctx.fill();
+    // 内描边
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 1;
+    roundRect(ctx, px + 1.5, py + 1.5, size - 3, size - 3, 4);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function lighten(hex, amt) {
+    const c = hex.replace('#', '');
+    const r = Math.min(255, parseInt(c.slice(0,2),16) + Math.round(255*amt));
+    const g = Math.min(255, parseInt(c.slice(2,4),16) + Math.round(255*amt));
+    const b = Math.min(255, parseInt(c.slice(4,6),16) + Math.round(255*amt));
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function drawGrid() {
+    bctx.clearRect(0, 0, boardCanvas.width, boardCanvas.height);
+    // 背景网格
+    bctx.strokeStyle = 'rgba(255,255,255,0.03)';
+    bctx.lineWidth = 1;
+    for (let c = 1; c < COLS; c++) {
+      bctx.beginPath();
+      bctx.moveTo(c * CELL, 0);
+      bctx.lineTo(c * CELL, ROWS * CELL);
+      bctx.stroke();
+    }
+    for (let r = 1; r < ROWS; r++) {
+      bctx.beginPath();
+      bctx.moveTo(0, r * CELL);
+      bctx.lineTo(COLS * CELL, r * CELL);
+      bctx.stroke();
+    }
+
+    // 已落定的格子
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        if (grid[r][c]) {
+          // 正在闪烁消除的行
+          if (flashRows.includes(r)) {
+            const phase = Math.sin(flashTimer * 0.04) * 0.5 + 0.5;
+            drawCell(bctx, c * CELL, r * CELL, '#ffffff', CELL, 0.4 + phase * 0.6);
+          } else {
+            drawCell(bctx, c * CELL, r * CELL, grid[r][c]);
+          }
+        }
+      }
+    }
+
+    // 当前方块 + 投影
+    if (current && !clearing) {
+      // 投影
+      let ghostY = current.y;
+      while (!collide(current, 0, ghostY - current.y + 1)) ghostY++;
+      const cells = current.cells;
+      for (let r = 0; r < cells.length; r++) {
+        for (let c = 0; c < cells[r].length; c++) {
+          if (cells[r][c]) {
+            const gx = (current.x + c) * CELL;
+            const gy = (ghostY + r) * CELL;
+            if (gy >= 0) {
+              bctx.globalAlpha = 0.18;
+              bctx.fillStyle = current.color;
+              roundRect(bctx, gx + 2, gy + 2, CELL - 4, CELL - 4, 4);
+              bctx.fill();
+              bctx.globalAlpha = 1;
+            }
+          }
+        }
+      }
+      // 实体
+      for (let r = 0; r < cells.length; r++) {
+        for (let c = 0; c < cells[r].length; c++) {
+          if (cells[r][c]) {
+            const gx = (current.x + c) * CELL;
+            const gy = (current.y + r) * CELL;
+            if (gy >= 0) drawCell(bctx, gx, gy, current.color);
+          }
+        }
+      }
+    }
+
+    drawParticles();
+  }
+
+  function drawNext() {
+    nctx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+    if (!nextPiece) return;
+    const cells = nextPiece.cells;
+    const size = 22;
+    const w = cells[0].length * size;
+    const h = cells.length * size;
+    const ox = (nextCanvas.width - w) / 2;
+    const oy = (nextCanvas.height - h) / 2;
+    for (let r = 0; r < cells.length; r++) {
+      for (let c = 0; c < cells[r].length; c++) {
+        if (cells[r][c]) {
+          drawCell(nctx, ox + c * size, oy + r * size, nextPiece.color, size);
+        }
+      }
+    }
+  }
+
+  // ====== UI ======
+  function updateStats(flash) {
+    linesEl.textContent = stats.lines;
+    scoreEl.textContent = stats.score.toLocaleString();
+    comboEl.textContent = 'x' + stats.combo;
+    levelEl.textContent = stats.level;
+    speedEl.textContent = (480 / dropInterval).toFixed(1) + 'x';
+    if (flash) {
+      [linesEl, scoreEl, comboEl].forEach(el => {
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
+      });
+    }
+  }
+
+  // ====== 主循环 ======
+  function step(time) {
+    if (!lastTime) lastTime = time;
+    const dt = time - lastTime;
+    lastTime = time;
+
+    if (clearing) {
+      flashTimer += dt;
+      if (flashTimer > 380) applyClear();
+    } else {
+      dropTimer += dt;
+      if (dropTimer >= dropInterval) {
+        dropTimer = 0;
+        if (!collide(current, 0, 1)) {
+          current.y++;
+        } else {
+          lockPiece();
+        }
+      }
+    }
+
+    updateParticles(dt);
+    drawGrid();
+    drawNext();
+
+    // 安全阀：堆叠过高时优雅重启
+    if (!clearing && stackHeight() > 14) {
+      resetBoard();
+      spawnNext();
+    }
+
+    requestAnimationFrame(step);
+  }
+
+  // ====== 启动 ======
+  nextPiece = randomPiece();
+  spawnNext();
+  updateStats(false);
+  requestAnimationFrame(step);
+})();
+</script>
+
+</body>
+</html>

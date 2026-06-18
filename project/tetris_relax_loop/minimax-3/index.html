@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>解压俄罗斯方块 - 循环消除</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: radial-gradient(ellipse at center, #1a1a2e 0%, #0f0f1e 50%, #050510 100%);
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+  }
+  .stage {
+    position: relative;
+    padding: 30px;
+    border-radius: 24px;
+    background: linear-gradient(145deg, rgba(40, 40, 70, 0.4), rgba(20, 20, 40, 0.6));
+    box-shadow:
+      0 0 60px rgba(120, 80, 255, 0.15),
+      0 20px 60px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+  }
+  .title {
+    text-align: center;
+    color: #fff;
+    font-size: 22px;
+    font-weight: 300;
+    letter-spacing: 8px;
+    margin-bottom: 18px;
+    text-shadow: 0 0 20px rgba(120, 180, 255, 0.6);
+  }
+  .title span {
+    background: linear-gradient(90deg, #ff6b9d, #c084fc, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shimmer 3s linear infinite;
+    background-size: 200% 100%;
+  }
+  @keyframes shimmer {
+    0% { background-position: 0% 50%; }
+    100% { background-position: 200% 50%; }
+  }
+  .board {
+    position: relative;
+    width: 320px;
+    height: 640px;
+    background:
+      linear-gradient(180deg, rgba(10, 10, 30, 0.9), rgba(20, 20, 40, 0.95));
+    border-radius: 12px;
+    border: 2px solid rgba(120, 100, 200, 0.3);
+    box-shadow:
+      inset 0 0 40px rgba(0, 0, 0, 0.5),
+      0 0 30px rgba(100, 80, 200, 0.2);
+    overflow: hidden;
+  }
+  .grid-bg {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(120, 100, 200, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120, 100, 200, 0.06) 1px, transparent 1px);
+    background-size: 32px 32px;
+    pointer-events: none;
+  }
+  .glow {
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at top, rgba(120, 80, 255, 0.15), transparent 60%);
+    pointer-events: none;
+  }
+  .cell {
+    position: absolute;
+    width: 30px;
+    height: 30px;
+    border-radius: 5px;
+    transition: top 0.08s linear, left 0.08s linear, transform 0.1s ease, opacity 0.3s ease;
+    box-shadow:
+      inset 0 -3px 0 rgba(0, 0, 0, 0.25),
+      inset 0 2px 0 rgba(255, 255, 255, 0.25),
+      0 2px 8px rgba(0, 0, 0, 0.4);
+  }
+  .cell::after {
+    content: '';
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 8px; height: 8px;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    filter: blur(1px);
+  }
+  .cell.clearing {
+    animation: clearAnim 0.4s ease-out forwards;
+  }
+  @keyframes clearAnim {
+    0% { transform: scale(1); filter: brightness(1); }
+    30% { transform: scale(1.4); filter: brightness(2.5); box-shadow: 0 0 30px currentColor; }
+    100% { transform: scale(0); filter: brightness(3); opacity: 0; }
+  }
+  .flash {
+    position: absolute;
+    left: 0; right: 0;
+    height: 32px;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.9), transparent);
+    pointer-events: none;
+    animation: flashRow 0.4s ease-out forwards;
+    box-shadow: 0 0 40px rgba(255, 255, 255, 0.6);
+  }
+  @keyframes flashRow {
+    0% { opacity: 0; transform: scaleX(0.3); }
+    50% { opacity: 1; transform: scaleX(1); }
+    100% { opacity: 0; transform: scaleX(1.1); }
+  }
+  .particle {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: particleFly 0.8s ease-out forwards;
+  }
+  @keyframes particleFly {
+    0% { transform: translate(0, 0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+  }
+  .score {
+    position: absolute;
+    top: 40px;
+    right: -120px;
+    color: #fff;
+    font-size: 14px;
+    letter-spacing: 2px;
+    text-align: center;
+  }
+  .score .num {
+    font-size: 36px;
+    font-weight: 200;
+    background: linear-gradient(180deg, #fff, #a8b5ff);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-top: 4px;
+  }
+  .combo {
+    margin-top: 14px;
+    color: #ff6b9d;
+    font-size: 12px;
+    letter-spacing: 1px;
+    opacity: 0.7;
+  }
+  .hint {
+    position: absolute;
+    bottom: -36px;
+    left: 0; right: 0;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.3);
+    font-size: 12px;
+    letter-spacing: 4px;
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <div class="title"><span>PRESSURE  RELIEF</span></div>
+    <div class="board" id="board">
+      <div class="grid-bg"></div>
+      <div class="glow"></div>
+      <div class="score">
+        消除行数
+        <div class="num" id="score">0</div>
+        <div class="combo" id="combo">无</div>
+      </div>
+    </div>
+    <div class="hint">无限循环 · 自动消除</div>
+  </div>
+
+<script>
+(() => {
+  const board = document.getElementById('board');
+  const scoreEl = document.getElementById('score');
+  const comboEl = document.getElementById('combo');
+
+  const COLS = 10;
+  const ROWS = 20;
+  const CELL = 32;
+  const BOARD_W = COLS * CELL;
+  const BOARD_H = ROWS * CELL;
+
+  // 颜色与形状 (标准俄罗斯方块)
+  const PIECES = {
+    I: { color: '#00f0f0', glow: '#00f0f0', shape: [[1,1,1,1]] },
+    O: { color: '#f0f000', glow: '#f0f000', shape: [[1,1],[1,1]] },
+    T: { color: '#a000f0', glow: '#a000f0', shape: [[0,1,0],[1,1,1]] },
+    S: { color: '#00f000', glow: '#00f000', shape: [[0,1,1],[1,1,0]] },
+    Z: { color: '#f00000', glow: '#f00000', shape: [[1,1,0],[0,1,1]] },
+    J: { color: '#0000f0', glow: '#0000f0', shape: [[1,0,0],[1,1,1]] },
+    L: { color: '#f0a000', glow: '#f0a000', shape: [[0,0,1],[1,1,1]] }
+  };
+
+  const PIECE_KEYS = Object.keys(PIECES);
+
+  // 预定义"完美消除"序列 —— 每个 piece 在落入时只补齐当前最近未满行
+  // 整个策略: 维护"最底未满行",新方块会落到该行并填满之
+  let grid;          // 0 或 {color, glow}
+  let bottomGap;     // 最低未填满行 index (0 = 底)
+  let score;
+  let combo;
+  let active;        // 当前下落方块 {key, x, y, shape, color, glow}
+  let dropTimer;
+  let dropInterval;  // 越小下落越快
+  let raf;
+
+  function init() {
+    grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+    bottomGap = 0;
+    score = 0;
+    combo = 0;
+    active = null;
+    dropInterval = 380;
+    dropTimer = 0;
+    document.querySelectorAll('.cell, .flash, .particle').forEach(n => n.remove());
+    scoreEl.textContent = '0';
+    comboEl.textContent = '无';
+    spawn();
+    requestAnimationFrame(loop);
+  }
+
+  function spawn() {
+    // 80% 概率挑选"刚好能填到最底未满行"的方块
+    // 找到一种 shape 与一个 x 位置,使得该方块在落地后恰好填满 bottomGap
+    const candidates = [];
+
+    for (const key of PIECE_KEYS) {
+      const def = PIECES[key];
+      const shapes = [def.shape, ...rotations(def.shape)];
+      for (const s of shapes) {
+        for (let x = -1; x <= COLS - s[0].length; x++) {
+          // 计算 y 落点: 假定从最顶开始下落
+          let y = -s.length;
+          // 找会让方块停在 bottomGap 行的落点
+          // 即 shape 在 y+s.length-1 (最底行) 的行号 == bottomGap
+          // 简单做法: y = bottomGap - s.length + 1
+          const targetY = bottomGap - s.length + 1;
+          if (targetY < -s.length + 1) continue;
+          if (canPlace(s, x, targetY)) {
+            // 验证: 若放置,确实能填满 bottomGap
+            if (fillsRow(s, x, targetY, bottomGap)) {
+              candidates.push({ key, shape: s, x, y: targetY });
+            }
+          }
+        }
+      }
+    }
+
+    let chosen;
+    if (candidates.length > 0) {
+      chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    } else {
+      // 兜底: 任意放置
+      const key = PIECE_KEYS[Math.floor(Math.random() * PIECE_KEYS.length)];
+      const def = PIECES[key];
+      chosen = {
+        key,
+        shape: def.shape,
+        x: Math.floor((COLS - def.shape[0].length) / 2),
+        y: 0
+      };
+    }
+
+    active = {
+      key: chosen.key,
+      shape: chosen.shape,
+      x: chosen.x,
+      y: chosen.y,
+      color: PIECES[chosen.key].color,
+      glow: PIECES[chosen.key].glow
+    };
+  }
+
+  function rotations(shape) {
+    // 返回另外 3 个旋转
+    const rots = [];
+    let cur = shape;
+    for (let i = 0; i < 3; i++) {
+      const w = cur[0].length, h = cur.length;
+      const next = Array.from({length: w}, () => Array(h).fill(0));
+      for (let r = 0; r < h; r++) {
+        for (let c = 0; c < w; c++) {
+          next[c][h - 1 - r] = cur[r][c];
+        }
+      }
+      rots.push(next);
+      cur = next;
+    }
+    return rots;
+  }
+
+  function canPlace(shape, x, y) {
+    for (let r = 0; r < shape.length; r++) {
+      for (let c = 0; c < shape[r].length; c++) {
+        if (!shape[r][c]) continue;
+        const nx = x + c, ny = y + r;
+        if (nx < 0 || nx >= COLS || ny >= ROWS) return false;
+        if (ny < 0) continue;
+        if (grid[ny][nx]) return false;
+      }
+    }
+    return true;
+  }
+
+  function fillsRow(shape, x, y, row) {
+    // 该 shape 落在 (x,y),检查是否让 row 行被完全填满 (即 shape 中所有 cell 都在 row)
+    for (let r = 0; r < shape.length; r++) {
+      for (let c = 0; c < shape[r].length; c++) {
+        if (shape[r][c]) {
+          if (y + r === row) {
+            // ok
+          } else {
+            return false;
+          }
+        }
+      }
+    }
+    return true;
+  }
+
+  function lock() {
+    const shape = active.shape;
+    let touchedRow = -1;
+    for (let r = 0; r < shape.length; r++) {
+      for (let c = 0; c < shape[r].length; c++) {
+        if (!shape[r][c]) continue;
+        const nx = active.x + c;
+        const ny = active.y + r;
+        if (ny < 0) continue;
+        grid[ny][nx] = { color: active.color, glow: active.glow };
+        touchedRow = Math.max(touchedRow, ny);
+      }
+    }
+    // 检查并消除
+    const fullRows = [];
+    for (let ny = 0; ny < ROWS; ny++) {
+      if (grid[ny].every(cell => cell)) fullRows.push(ny);
+    }
+    if (fullRows.length > 0) {
+      clearRows(fullRows);
+    }
+    active = null;
+  }
+
+  function clearRows(rows) {
+    combo += 1;
+    score += rows.length * (rows.length === 4 ? 4 : 1) * 100;
+    scoreEl.textContent = score;
+    comboEl.textContent = combo > 1 ? `连击 ×${combo}` : '无';
+
+    // 视觉: 行闪烁 + 粒子
+    rows.forEach(row => {
+      const flash = document.createElement('div');
+      flash.className = 'flash';
+      flash.style.top = (row * CELL) + 'px';
+      board.appendChild(flash);
+      setTimeout(() => flash.remove(), 500);
+
+      for (let c = 0; c < COLS; c++) {
+        const cell = grid[row][c];
+        if (!cell) continue;
+        const el = document.createElement('div');
+        el.className = 'cell clearing';
+        el.style.left = (c * CELL + 1) + 'px';
+        el.style.top = (row * CELL + 1) + 'px';
+        el.style.background = `linear-gradient(135deg, ${cell.color}, ${shade(cell.color, -30)})`;
+        el.style.color = cell.glow;
+        el.style.boxShadow = `0 0 20px ${cell.glow}, inset 0 -3px 0 rgba(0,0,0,0.25), inset 0 2px 0 rgba(255,255,255,0.25)`;
+        board.appendChild(el);
+        setTimeout(() => el.remove(), 500);
+
+        // 粒子
+        for (let p = 0; p < 4; p++) {
+          spawnParticle(c * CELL + 16, row * CELL + 16, cell.glow);
+        }
+      }
+    });
+
+    // 延迟后真正移除
+    setTimeout(() => {
+      // 从下往上删除
+      const sorted = [...rows].sort((a, b) => b - a);
+      sorted.forEach(r => {
+        grid.splice(r, 1);
+        grid.unshift(Array(COLS).fill(0));
+      });
+      // 重新计算 bottomGap
+      recomputeBottomGap();
+      // 提速
+      dropInterval = Math.max(80, dropInterval - 8);
+    }, 380);
+  }
+
+  function spawnParticle(x, y, color) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = x + 'px';
+    p.style.top = y + 'px';
+    p.style.background = color;
+    p.style.color = color;
+    p.style.boxShadow = `0 0 8px ${color}`;
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 40 + Math.random() * 60;
+    p.style.setProperty('--dx', Math.cos(angle) * dist + 'px');
+    p.style.setProperty('--dy', Math.sin(angle) * dist + 'px');
+    board.appendChild(p);
+    setTimeout(() => p.remove(), 800);
+  }
+
+  function recomputeBottomGap() {
+    for (let r = 0; r < ROWS; r++) {
+      if (grid[r].some(c => !c)) { bottomGap = r; return; }
+    }
+    bottomGap = ROWS; // 全部填满 -> 已被消除
+  }
+
+  function shade(hex, percent) {
+    // 颜色加深/变亮
+    const num = parseInt(hex.replace('#', ''), 16);
+    const r = (num >> 16) + percent;
+    const g = ((num >> 8) & 0xff) + percent;
+    const b = (num & 0xff) + percent;
+    const rr = Math.max(0, Math.min(255, r));
+    const gg = Math.max(0, Math.min(255, g));
+    const bb = Math.max(0, Math.min(255, b));
+    return '#' + ((rr << 16) | (gg << 8) | bb).toString(16).padStart(6, '0');
+  }
+
+  let last = 0;
+  function loop(ts) {
+    if (!last) last = ts;
+    const dt = ts - last;
+    last = ts;
+
+    if (!active) {
+      // 等消除动画结束
+      if (bottomGap >= ROWS || grid.every(row => row.every(c => !c))) {
+        // 全清, 重新开始
+        if (bottomGap >= ROWS) {
+          // 触发全清庆祝
+          celebrateFullClear();
+          setTimeout(() => {
+            grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+            bottomGap = 0;
+            score = 0;
+            combo = 0;
+            scoreEl.textContent = '0';
+            comboEl.textContent = '无';
+            dropInterval = 380;
+            spawn();
+          }, 700);
+        } else {
+          spawn();
+        }
+      } else {
+        spawn();
+      }
+    } else {
+      dropTimer += dt;
+      if (dropTimer >= dropInterval) {
+        dropTimer = 0;
+        // 尝试下落
+        if (canPlace(active.shape, active.x, active.y + 1)) {
+          active.y += 1;
+        } else {
+          lock();
+        }
+      }
+    }
+
+    render();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function celebrateFullClear() {
+    for (let i = 0; i < 60; i++) {
+      setTimeout(() => {
+        const x = Math.random() * BOARD_W;
+        const y = Math.random() * BOARD_H;
+        const colors = ['#ff6b9d', '#c084fc', '#60a5fa', '#34d399', '#fbbf24', '#00f0f0'];
+        spawnParticle(x, y, colors[Math.floor(Math.random() * colors.length)]);
+      }, i * 12);
+    }
+  }
+
+  // 渲染: 全部 cell 用绝对定位
+  let renderCells = [];
+  function render() {
+    // 清理之前动态 cell
+    document.querySelectorAll('.cell:not(.clearing)').forEach(n => n.remove());
+    if (!active) return;
+
+    for (let r = 0; r < active.shape.length; r++) {
+      for (let c = 0; c < active.shape[r].length; c++) {
+        if (!active.shape[r][c]) continue;
+        const x = active.x + c;
+        const y = active.y + r;
+        if (y < 0) continue;
+        const el = document.createElement('div');
+        el.className = 'cell';
+        el.style.left = (x * CELL + 1) + 'px';
+        el.style.top = (y * CELL + 1) + 'px';
+        el.style.background = `linear-gradient(135deg, ${active.color}, ${shade(active.color, -40)})`;
+        el.style.color = active.glow;
+        el.style.boxShadow = `0 0 12px ${active.glow}55, inset 0 -3px 0 rgba(0,0,0,0.25), inset 0 2px 0 rgba(255,255,255,0.25)`;
+        board.appendChild(el);
+      }
+    }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

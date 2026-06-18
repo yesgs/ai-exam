@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>液态金属俄罗斯方块 · 无限解压</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    height: 100%; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #0d0d0d;
+  }
+  body {
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh;
+    background:
+      radial-gradient(circle at 25% 25%, rgba(30, 30, 60, 0.5), transparent 50%),
+      radial-gradient(circle at 75% 75%, rgba(60, 20, 40, 0.4), transparent 50%),
+      #0d0d0d;
+  }
+
+  .container {
+    display: flex; align-items: flex-start; gap: 34px;
+    position: relative;
+  }
+
+  .board-outer {
+    position: relative;
+    padding: 4px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #333, #111, #333);
+    box-shadow: 0 0 40px rgba(0, 0, 0, 0.8), 0 0 80px rgba(255, 255, 255, 0.03);
+  }
+
+  .board {
+    position: relative;
+    width: 300px; height: 600px;
+    border-radius: 14px;
+    background: #0a0a0a;
+    overflow: hidden;
+    box-shadow: inset 0 0 60px rgba(0, 0, 0, 0.6);
+  }
+
+  .board::before {
+    content: ''; position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+    background-size: 30px 30px;
+    pointer-events: none; z-index: 1;
+  }
+
+  /* 液态金属方块 */
+  .cell {
+    position: absolute;
+    width: 28px; height: 28px;
+    border-radius: 5px;
+    background: var(--bg);
+    box-shadow:
+      0 0 10px var(--glow),
+      0 0 20px var(--glow2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.2),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+    transition: top 0.06s linear;
+    z-index: 2;
+  }
+  .cell::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 6px; height: 6px;
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 50%;
+    filter: blur(1px);
+  }
+
+  .cell.clearing {
+    animation: liquefy 0.5s ease-out forwards;
+  }
+  @keyframes liquefy {
+    0%   { transform: scale(1); filter: brightness(1) blur(0); }
+    30%  { transform: scale(1.3); filter: brightness(2) blur(1px); }
+    100% { transform: scale(0.3) translateY(-30px); opacity: 0; filter: brightness(3) blur(6px); }
+  }
+
+  /* 液态闪光 */
+  .liquid-flash {
+    position: absolute;
+    left: 0; right: 0;
+    height: 30px;
+    pointer-events: none;
+    z-index: 3;
+    animation: liquidFlow 0.6s ease-out forwards;
+  }
+  @keyframes liquidFlow {
+    0%   { opacity: 0; background: linear-gradient(90deg, transparent, var(--lcolor), transparent); transform: scaleX(0.1); }
+    40%  { opacity: 1; transform: scaleX(1.2); }
+    100% { opacity: 0; transform: scaleX(1); }
+  }
+
+  /* 熔滴 */
+  .droplet {
+    position: absolute;
+    border-radius: 50% 50% 50% 50% / 30% 30% 70% 70%;
+    pointer-events: none;
+    z-index: 4;
+    animation: dripFall 0.8s ease-out forwards;
+  }
+  @keyframes dripFall {
+    0%   { transform: translate(0, 0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--dx), var(--dy)) scale(0); opacity: 0; }
+  }
+
+  /* 蒸汽 */
+  .vapor {
+    position: absolute;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 4;
+    filter: blur(4px);
+    animation: vaporRise 1.2s ease-out forwards;
+  }
+  @keyframes vaporRise {
+    0%   { transform: translate(0, 0) scale(0.5); opacity: 0.6; }
+    100% { transform: translate(var(--vx), var(--vy)) scale(3); opacity: 0; }
+  }
+
+  .side {
+    display: flex; flex-direction: column; gap: 18px;
+    padding-top: 8px;
+  }
+  .card {
+    width: 120px;
+    padding: 16px 18px;
+    border-radius: 14px;
+    background: rgba(20, 20, 30, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(10px);
+  }
+  .card-label {
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(255, 255, 255, 0.3);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+  .card-val {
+    font-size: 28px;
+    font-weight: 300;
+    color: #e0e0e0;
+    letter-spacing: 1px;
+  }
+  .card-val.hot { color: #ff5e62; text-shadow: 0 0 12px rgba(255, 94, 98, 0.4); }
+
+  .heat-bar {
+    height: 3px;
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .heat-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: linear-gradient(90deg, #ff5e62, #ff9966);
+    transition: width 0.3s ease;
+  }
+
+  .title {
+    position: absolute;
+    top: -44px; left: 0; right: 0;
+    text-align: center;
+    font-size: 12px;
+    letter-spacing: 6px;
+    color: rgba(255, 255, 255, 0.2);
+    text-transform: uppercase;
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="title">LIQUID TETRIS · INFINITE LOOP</div>
+    <div class="board-outer">
+      <div class="board" id="board"></div>
+    </div>
+    <div class="side">
+      <div class="card">
+        <div class="card-label">LINES</div>
+        <div class="card-val" id="lines">0</div>
+      </div>
+      <div class="card">
+        <div class="card-label">COMBO</div>
+        <div class="card-val hot" id="combo">×0</div>
+      </div>
+      <div class="card">
+        <div class="card-label">HEAT</div>
+        <div class="heat-bar"><div class="heat-fill" id="heat" style="width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  const board = document.getElementById('board');
+  const linesEl = document.getElementById('lines');
+  const comboEl = document.getElementById('combo');
+  const heatEl = document.getElementById('heat');
+
+  const COLS = 10, ROWS = 20, CELL = 30;
+
+  // 液态金属配色
+  const PIECES = {
+    I: { bg: 'linear-gradient(135deg, #4dc9f6, #1a8fbf)', glow: 'rgba(77, 201, 246, 0.5)', glow2: 'rgba(77, 201, 246, 0.2)', shape: [[1,1,1,1]] },
+    O: { bg: 'linear-gradient(135deg, #ffdc4d, #cc9900)', glow: 'rgba(255, 220, 77, 0.5)', glow2: 'rgba(255, 220, 77, 0.2)', shape: [[1,1],[1,1]] },
+    T: { bg: 'linear-gradient(135deg, #c44dff, #7a1fbf)', glow: 'rgba(196, 77, 255, 0.5)', glow2: 'rgba(196, 77, 255, 0.2)', shape: [[0,1,0],[1,1,1]] },
+    S: { bg: 'linear-gradient(135deg, #4dff88, #1fbf5a)', glow: 'rgba(77, 255, 136, 0.5)', glow2: 'rgba(77, 255, 136, 0.2)', shape: [[0,1,1],[1,1,0]] },
+    Z: { bg: 'linear-gradient(135deg, #ff4d5a, #bf1f2a)', glow: 'rgba(255, 77, 90, 0.5)', glow2: 'rgba(255, 77, 90, 0.2)', shape: [[1,1,0],[0,1,1]] },
+    J: { bg: 'linear-gradient(135deg, #4d7aff, #1f3fbf)', glow: 'rgba(77, 122, 255, 0.5)', glow2: 'rgba(77, 122, 255, 0.2)', shape: [[1,0,0],[1,1,1]] },
+    L: { bg: 'linear-gradient(135deg, #ff8c4d, #bf5a1f)', glow: 'rgba(255, 140, 77, 0.5)', glow2: 'rgba(255, 140, 77, 0.2)', shape: [[0,0,1],[1,1,1]] }
+  };
+  const KEYS = Object.keys(PIECES);
+
+  let grid, bottomGap, totalLines, combo, active, dropTimer, dropInterval, last, raf;
+
+  function init() {
+    grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+    bottomGap = 0; totalLines = 0; combo = 0;
+    active = null; dropInterval = 440; dropTimer = 0; last = 0;
+    cleanup(); updateUI();
+    spawn();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function cleanup() {
+    board.querySelectorAll('.cell, .liquid-flash, .droplet, .vapor').forEach(n => n.remove());
+  }
+
+  function updateUI() {
+    linesEl.textContent = totalLines;
+    comboEl.textContent = combo > 0 ? '×' + combo : '×0';
+    const pct = Math.min(100, ((440 - dropInterval) / (440 - 70)) * 100);
+    heatEl.style.width = pct + '%';
+  }
+
+  function rotate(shape) {
+    const h = shape.length, w = shape[0].length;
+    const r = Array.from({length: w}, () => Array(h).fill(0));
+    for (let y = 0; y < h; y++)
+      for (let x = 0; x < w; x++)
+        r[x][h - 1 - y] = shape[y][x];
+    return r;
+  }
+
+  function allRotations(shape) {
+    const rots = [shape];
+    let cur = shape;
+    for (let i = 0; i < 3; i++) { cur = rotate(cur); rots.push(cur); }
+    return rots;
+  }
+
+  function canPlace(shape, x, y) {
+    for (let r = 0; r < shape.length; r++)
+      for (let c = 0; c < shape[r].length; c++) {
+        if (!shape[r][c]) continue;
+        const nx = x + c, ny = y + r;
+        if (nx < 0 || nx >= COLS || ny >= ROWS) return false;
+        if (ny < 0) continue;
+        if (grid[ny][nx]) return false;
+      }
+    return true;
+  }
+
+  function spawn() {
+    const key = KEYS[Math.floor(Math.random() * KEYS.length)];
+    const def = PIECES[key];
+    const shapes = allRotations(def.shape);
+
+    const candidates = [];
+    for (const s of shapes) {
+      for (let x = -1; x <= COLS - s[0].length + 1; x++) {
+        const ty = bottomGap - s.length + 1;
+        if (ty < -s.length + 1) continue;
+        if (canPlace(s, x, ty)) candidates.push({ shape: s, x, y: ty });
+      }
+    }
+
+    let chosen;
+    if (candidates.length > 0) {
+      chosen = candidates[Math.floor(Math.random() * candidates.length)];
+    } else {
+      chosen = { shape: def.shape, x: Math.floor((COLS - def.shape[0].length) / 2), y: 0 };
+    }
+
+    active = {
+      shape: chosen.shape, x: chosen.x, y: chosen.y,
+      bg: def.bg, glow: def.glow, glow2: def.glow2
+    };
+  }
+
+  function lock() {
+    for (let r = 0; r < active.shape.length; r++)
+      for (let c = 0; c < active.shape[r].length; c++) {
+        if (!active.shape[r][c]) continue;
+        const nx = active.x + c, ny = active.y + r;
+        if (ny < 0) continue;
+        grid[ny][nx] = { bg: active.bg, glow: active.glow, glow2: active.glow2 };
+      }
+
+    const full = [];
+    for (let y = 0; y < ROWS; y++)
+      if (grid[y].every(c => c)) full.push(y);
+
+    if (full.length > 0) clearRows(full);
+    else combo = 0;
+    active = null;
+  }
+
+  function clearRows(rows) {
+    combo++;
+    totalLines += rows.length;
+    updateUI();
+
+    rows.forEach(row => {
+      // 液态金属闪光
+      const flash = document.createElement('div');
+      flash.className = 'liquid-flash';
+      flash.style.top = (row * CELL) + 'px';
+      flash.style.setProperty('--lcolor', 'rgba(255, 255, 255, 0.7)');
+      board.appendChild(flash);
+      setTimeout(() => flash.remove(), 700);
+
+      for (let c = 0; c < COLS; c++) {
+        const cell = grid[row][c];
+        if (!cell) continue;
+
+        // 消除方块
+        const el = document.createElement('div');
+        el.className = 'cell clearing';
+        el.style.left = (c * CELL + 1) + 'px';
+        el.style.top = (row * CELL + 1) + 'px';
+        el.style.setProperty('--bg', cell.bg);
+        el.style.setProperty('--glow', cell.glow);
+        el.style.setProperty('--glow2', cell.glow2);
+        board.appendChild(el);
+        setTimeout(() => el.remove(), 600);
+
+        // 熔滴
+        for (let i = 0; i < 2; i++) {
+          const d = document.createElement('div');
+          d.className = 'droplet';
+          const size = 4 + Math.random() * 6;
+          d.style.width = size + 'px';
+          d.style.height = (size * 1.5) + 'px';
+          d.style.background = `radial-gradient(circle, rgba(255,255,255,0.8), ${cell.glow})`;
+          d.style.left = (c * CELL + 14) + 'px';
+          d.style.top = (row * CELL + 14) + 'px';
+          d.style.setProperty('--dx', (Math.random() - 0.5) * 70 + 'px');
+          d.style.setProperty('--dy', -(Math.random() * 50 + 20) + 'px');
+          board.appendChild(d);
+          setTimeout(() => d.remove(), 900);
+        }
+
+        // 蒸汽
+        if (Math.random() > 0.5) {
+          const v = document.createElement('div');
+          v.className = 'vapor';
+          const vs = 10 + Math.random() * 14;
+          v.style.width = vs + 'px';
+          v.style.height = vs + 'px';
+          v.style.background = cell.glow;
+          v.style.left = (c * CELL + 14) + 'px';
+          v.style.top = (row * CELL + 14) + 'px';
+          v.style.setProperty('--vx', (Math.random() - 0.5) * 40 + 'px');
+          v.style.setProperty('--vy', -(Math.random() * 60 + 30) + 'px');
+          board.appendChild(v);
+          setTimeout(() => v.remove(), 1300);
+        }
+      }
+    });
+
+    setTimeout(() => {
+      const sorted = [...rows].sort((a, b) => b - a);
+      sorted.forEach(r => { grid.splice(r, 1); grid.unshift(Array(COLS).fill(0)); });
+      recomputeGap();
+      dropInterval = Math.max(70, dropInterval - 10);
+      updateUI();
+    }, 420);
+  }
+
+  function recomputeGap() {
+    for (let r = 0; r < ROWS; r++)
+      if (grid[r].some(c => !c)) { bottomGap = r; return; }
+    bottomGap = ROWS;
+  }
+
+  function celebrate() {
+    for (let i = 0; i < 60; i++) {
+      setTimeout(() => {
+        const d = document.createElement('div');
+        d.className = 'droplet';
+        const size = 5 + Math.random() * 8;
+        d.style.width = size + 'px';
+        d.style.height = (size * 1.5) + 'px';
+        d.style.background = 'radial-gradient(circle, #fff, rgba(255,255,255,0.2))';
+        d.style.left = Math.random() * 300 + 'px';
+        d.style.top = Math.random() * 600 + 'px';
+        const a = Math.random() * Math.PI * 2;
+        const dist = 40 + Math.random() * 100;
+        d.style.setProperty('--dx', Math.cos(a) * dist + 'px');
+        d.style.setProperty('--dy', Math.sin(a) * dist + 'px');
+        board.appendChild(d);
+        setTimeout(() => d.remove(), 900);
+      }, i * 18);
+    }
+  }
+
+  function loop(ts) {
+    if (!last) last = ts;
+    const dt = ts - last; last = ts;
+
+    if (!active) {
+      if (bottomGap >= ROWS) {
+        celebrate();
+        setTimeout(() => {
+          grid = Array.from({length: ROWS}, () => Array(COLS).fill(0));
+          bottomGap = 0; combo = 0; dropInterval = 440;
+          updateUI(); spawn();
+        }, 1000);
+      } else {
+        spawn();
+      }
+    } else {
+      dropTimer += dt;
+      if (dropTimer >= dropInterval) {
+        dropTimer = 0;
+        if (canPlace(active.shape, active.x, active.y + 1)) {
+          active.y++;
+        } else {
+          lock();
+        }
+      }
+    }
+
+    render();
+    raf = requestAnimationFrame(loop);
+  }
+
+  function render() {
+    board.querySelectorAll('.cell:not(.clearing)').forEach(n => n.remove());
+    if (!active) return;
+    for (let r = 0; r < active.shape.length; r++)
+      for (let c = 0; c < active.shape[r].length; c++) {
+        if (!active.shape[r][c]) continue;
+        const x = active.x + c, y = active.y + r;
+        if (y < 0) continue;
+        const el = document.createElement('div');
+        el.className = 'cell';
+        el.style.left = (x * CELL + 1) + 'px';
+        el.style.top = (y * CELL + 1) + 'px';
+        el.style.setProperty('--bg', active.bg);
+        el.style.setProperty('--glow', active.glow);
+        el.style.setProperty('--glow2', active.glow2);
+        board.appendChild(el);
+      }
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
